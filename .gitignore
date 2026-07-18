@@ -1,0 +1,25 @@
+# OS metadata
+.DS_Store
+
+# AI-tool and local analysis runtime state
+.claude/
+.codegraph
+.gjc/
+.omc/
+.omo/
+
+# Local build products, evidence, logs, captures, and debug symbols
+build/
+*.log
+*.out
+*.err
+*.dSYM/
+*.o
+*.obj
+*.exe
+*.pdb
+*.dylib
+
+# Local QA artifacts and Python bytecode
+showcase-receipt-fix/
+tools/__pycache__/
