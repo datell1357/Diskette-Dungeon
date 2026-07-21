@@ -550,51 +550,54 @@ void room_generate(int biome, int idx, int promise, int entry_dir){
     for (int y=0;y<H;y++) for (int x=0;x<W;x++)
         r->tiles[y][x] = (x==0||y==0||x==W-1||y==H-1)? T_WALL : T_FLOOR;
 
+    // 내부 장애물 (보스방은 개방)
     if (!r->is_boss){
-        int px[4],py[4],pw[4],ph[4],placed=0;
-        int count=2+rng_i(&room_rng,3);
-        for (int n=0;n<count;n++){
-            int shape=rng_i(&room_rng,8), mw, mh;
-            if (shape==0){ mw=3; mh=2; }
-            else if (shape==3){ mw=4; mh=1; }
-            else if (shape==4){ mw=1; mh=4; }
-            else if (shape==7){ mw=4; mh=3; }
-            else { mw=3; mh=3; }
-            int x=0,y=0,ok=0;
-            for (int attempt=0;attempt<24;attempt++){
-                x=2+rng_i(&room_rng,W-mw-3);
-                y=2+rng_i(&room_rng,H-mh-3);
-                if (x<W/2+5 && x+mw>W/2-4 && y<H/2+4 && y+mh>H/2-3) continue;
-                bool overlap=false;
-                for (int i=0;i<placed;i++)
-                    if (x<px[i]+pw[i]+1 && x+mw+1>px[i] && y<py[i]+ph[i]+1 && y+mh+1>py[i]) overlap=true;
-                if (!overlap){ ok=1; break; }
+        // 정형 대칭 패턴 — 공간과 조화되는 장애물
+        int pat = rng_i(&room_rng,4);
+        if (pat==0){
+            // 2x2 기둥 4개, 방의 1/3·2/3 지점 대칭 배치
+            int pxs[2]={W/3, W*2/3-1};
+            int pys[2]={H/3-1, H*2/3};
+            for (int ky=0;ky<2;ky++) for (int kx=0;kx<2;kx++)
+                for (int j=0;j<2;j++) for (int i2=0;i2<2;i2++)
+                    r->tiles[pys[ky]+j][pxs[kx]+i2]=T_WALL;
+        } else if (pat==1){
+            // 위/아래 벽에서 마주 보고 뻗는 돌출 벽 (통로 형성)
+            int x=4+rng_i(&room_rng,W-10);
+            int len=3+rng_i(&room_rng,3);
+            for (int j=1;j<=len && j<H-1;j++){
+                r->tiles[j][x]=T_WALL; if(x+1<W-1) r->tiles[j][x+1]=T_WALL;
+                r->tiles[H-1-j][x]=T_WALL; if(x+1<W-1) r->tiles[H-1-j][x+1]=T_WALL;
             }
-            if (!ok) continue;
-            px[placed]=x; py[placed]=y; pw[placed]=mw; ph[placed]=mh; placed++;
-            if (shape==0){
-                for (int yy=y;yy<y+2;yy++) for (int xx=x;xx<x+3;xx++) r->tiles[yy][xx]=T_WALL;
-            } else if (shape==1){
-                for (int yy=y;yy<y+3;yy++) r->tiles[yy][x]=T_WALL;
-                for (int xx=x;xx<x+3;xx++) r->tiles[y+2][xx]=T_WALL;
-            } else if (shape==2){
-                for (int yy=y;yy<y+3;yy++) r->tiles[yy][x]=T_WALL;
-                for (int xx=x;xx<x+3;xx++) r->tiles[y][xx]=T_WALL;
-            } else if (shape==3){
-                for (int xx=x;xx<x+4;xx++) r->tiles[y][xx]=T_WALL;
-            } else if (shape==4){
-                for (int yy=y;yy<y+4;yy++) r->tiles[yy][x]=T_WALL;
-            } else if (shape==5){
-                for (int xx=x;xx<x+3;xx++) r->tiles[y][xx]=T_WALL;
-                for (int yy=y+1;yy<y+3;yy++) r->tiles[yy][x+1]=T_WALL;
-            } else if (shape==6){
-                for (int yy=y;yy<y+3;yy++){ r->tiles[yy][x]=T_WALL; r->tiles[yy][x+2]=T_WALL; }
-                r->tiles[y+2][x+1]=T_WALL;
-            } else {
-                r->tiles[y][x]=T_WALL; r->tiles[y][x+1]=T_WALL;
-                r->tiles[y+1][x+1]=T_WALL; r->tiles[y+1][x+2]=T_WALL;
-                r->tiles[y+2][x+2]=T_WALL; r->tiles[y+2][x+3]=T_WALL;
+        } else if (pat==2){
+            // 중앙 상하 가로 블록 — 가운데 길은 열어둠
+            int w2=4+rng_i(&room_rng,4);
+            int x=(W-w2)/2;
+            for (int i2=0;i2<w2;i2++){
+                r->tiles[H/2-3][x+i2]=T_WALL;
+                r->tiles[H/2+4][x+i2]=T_WALL;
             }
+        } // pat==3: 빈 방 (전투 공간)
+        // 단편화 지대(3바이옴)는 미로 느낌: 추가 칸막이
+        if (biome==2){
+            for (int c=0;c<2;c++){
+                int x=4+rng_i(&room_rng,W-9);
+                int gap=2+rng_i(&room_rng,H>10?H-10:1);
+                for (int y2=2;y2<H-2;y2++)
+                    if (y2<gap || y2>gap+5) r->tiles[y2][x]=T_WALL;
+            }
+        }
+        // 모서리 컷 (L/T자형 변형) — 스폰/문 모서리는 나중에 강제 카브로 보호
+        int ncut = rng_i(&room_rng,3); // 0..2
+        for (int c=0;c<ncut;c++){
+            int cw = 2 + rng_i(&room_rng, W/4>2?W/4-2:1);
+            int ch = 2 + rng_i(&room_rng, H/4>2?H/4-2:1);
+            int corner = rng_i(&room_rng,4); // 0 TL 1 TR 2 BL 3 BR
+            int x0 = (corner&1)? W-1-cw : 1;
+            int y0 = (corner&2)? H-1-ch : 1;
+            for (int yy=y0; yy<y0+ch && yy<H-1; yy++)
+                for (int xx=x0; xx<x0+cw && xx<W-1; xx++)
+                    r->tiles[yy][xx]=T_WALL;
         }
     }
 
