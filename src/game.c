@@ -537,10 +537,10 @@ void room_generate(int biome, int idx, int promise, int entry_dir){
     // --- 방 크기 (room_rng로 결정적, 다른 롤보다 먼저 뽑는다)
     int W, H;
     if (idx==0 && biome==0){ W=30; H=17; }       // 튜토리얼 고정
-    else if (r->is_boss){ W=38; H=24; }          // 보스방 고정
+    else if (r->is_boss){ W=40; H=24; }          // 보스방 고정
     else {
-        W = 24 + rng_i(&room_rng, 21);           // 24..44
-        H = 15 + rng_i(&room_rng, 12);           // 15..26
+        W = 28 + rng_i(&room_rng, 9);            // 28..36
+        H = 16 + rng_i(&room_rng, 7);            // 16..22
     }
     if (W>MAX_ROOM_W) W=MAX_ROOM_W;
     if (H>MAX_ROOM_H) H=MAX_ROOM_H;
@@ -550,54 +550,29 @@ void room_generate(int biome, int idx, int promise, int entry_dir){
     for (int y=0;y<H;y++) for (int x=0;x<W;x++)
         r->tiles[y][x] = (x==0||y==0||x==W-1||y==H-1)? T_WALL : T_FLOOR;
 
-    // 내부 장애물 (보스방은 개방)
     if (!r->is_boss){
-        // 정형 대칭 패턴 — 공간과 조화되는 장애물
-        int pat = rng_i(&room_rng,4);
-        if (pat==0){
-            // 2x2 기둥 4개, 방의 1/3·2/3 지점 대칭 배치
-            int pxs[2]={W/3, W*2/3-1};
-            int pys[2]={H/3-1, H*2/3};
-            for (int ky=0;ky<2;ky++) for (int kx=0;kx<2;kx++)
-                for (int j=0;j<2;j++) for (int i2=0;i2<2;i2++)
-                    r->tiles[pys[ky]+j][pxs[kx]+i2]=T_WALL;
-        } else if (pat==1){
-            // 위/아래 벽에서 마주 보고 뻗는 돌출 벽 (통로 형성)
-            int x=4+rng_i(&room_rng,W-10);
-            int len=3+rng_i(&room_rng,3);
-            for (int j=1;j<=len && j<H-1;j++){
-                r->tiles[j][x]=T_WALL; if(x+1<W-1) r->tiles[j][x+1]=T_WALL;
-                r->tiles[H-1-j][x]=T_WALL; if(x+1<W-1) r->tiles[H-1-j][x+1]=T_WALL;
+        int used[9]={0};
+        int count=2+rng_i(&room_rng,3);
+        for (int n=0;n<count;n++){
+            int slot;
+            do { slot=rng_i(&room_rng,9); } while (slot==4 || used[slot]);
+            used[slot]=1;
+            int col=slot%3, row=slot/3;
+            int x0=2+col*(W-4)/3, x1=2+(col+1)*(W-4)/3-1;
+            int y0=2+row*(H-4)/3, y1=2+(row+1)*(H-4)/3-1;
+            int shape=rng_i(&room_rng,4);
+            int x=x0+rng_i(&room_rng,(x1-x0)-2);
+            int y=y0+rng_i(&room_rng,(y1-y0)-2);
+            if (shape==0){
+                for (int yy=y;yy<y+2;yy++) for (int xx=x;xx<x+3;xx++) r->tiles[yy][xx]=T_WALL;
+            } else if (shape==1){
+                for (int yy=y;yy<y+3;yy++) r->tiles[yy][x]=T_WALL;
+                for (int xx=x;xx<x+3;xx++) r->tiles[y+2][xx]=T_WALL;
+            } else if (shape==2){
+                for (int xx=x;xx<x+4;xx++) r->tiles[y][xx]=T_WALL;
+            } else {
+                for (int yy=y;yy<y+4;yy++) r->tiles[yy][x]=T_WALL;
             }
-        } else if (pat==2){
-            // 중앙 상하 가로 블록 — 가운데 길은 열어둠
-            int w2=4+rng_i(&room_rng,4);
-            int x=(W-w2)/2;
-            for (int i2=0;i2<w2;i2++){
-                r->tiles[H/2-3][x+i2]=T_WALL;
-                r->tiles[H/2+4][x+i2]=T_WALL;
-            }
-        } // pat==3: 빈 방 (전투 공간)
-        // 단편화 지대(3바이옴)는 미로 느낌: 추가 칸막이
-        if (biome==2){
-            for (int c=0;c<2;c++){
-                int x=4+rng_i(&room_rng,W-9);
-                int gap=2+rng_i(&room_rng,H>10?H-10:1);
-                for (int y2=2;y2<H-2;y2++)
-                    if (y2<gap || y2>gap+5) r->tiles[y2][x]=T_WALL;
-            }
-        }
-        // 모서리 컷 (L/T자형 변형) — 스폰/문 모서리는 나중에 강제 카브로 보호
-        int ncut = rng_i(&room_rng,3); // 0..2
-        for (int c=0;c<ncut;c++){
-            int cw = 2 + rng_i(&room_rng, W/4>2?W/4-2:1);
-            int ch = 2 + rng_i(&room_rng, H/4>2?H/4-2:1);
-            int corner = rng_i(&room_rng,4); // 0 TL 1 TR 2 BL 3 BR
-            int x0 = (corner&1)? W-1-cw : 1;
-            int y0 = (corner&2)? H-1-ch : 1;
-            for (int yy=y0; yy<y0+ch && yy<H-1; yy++)
-                for (int xx=x0; xx<x0+cw && xx<W-1; xx++)
-                    r->tiles[yy][xx]=T_WALL;
         }
     }
 
