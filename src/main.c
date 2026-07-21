@@ -51,6 +51,18 @@ typedef struct {
     int have_retry_key;
     int showcase_checkpoint;
     int have_showcase_checkpoint;
+    int opening_checkpoint;
+    int have_opening_checkpoint;
+    int ending_checkpoint;
+    int have_ending_checkpoint;
+    int options_checkpoint;
+    int have_options_checkpoint;
+    int start_intro_checkpoint;
+    int have_start_intro_checkpoint;
+    int core_count;
+    int have_core_count;
+    char checkpoint[64];
+    int have_checkpoint;
     int hold_ms;
     int have_hold_ms;
 } DebugConfig;
@@ -92,6 +104,13 @@ static int debug_guarded_system(const char* command);
 
 static void debug_error(const char* why){
     fprintf(stderr, "{\"error\":\"%s\"}\n", why);
+    exit(2);
+}
+static void debug_invalid_checkpoint(void){
+    const char* action=DBG_CFG.action==22?"fixture-ddd-opening":
+                       DBG_CFG.action==23?"fixture-ddd-ending":"fixture-ddd-start-intro";
+    fprintf(stderr,"{\"error\":\"invalid-checkpoint\",\"action\":\"%s\",\"checkpoint\":\"%s\"}\n",
+            action,DBG_CFG.checkpoint);
     exit(2);
 }
 static unsigned long debug_uint(const char* s, unsigned long max){
@@ -317,7 +336,8 @@ static int debug_action(const char* s){
         "fixture-ddd-legacy-settlement","fixture-ddd-retry-contract",
         "fixture-ddd-forfeit","fixture-ddd-promise-labels",
         "fixture-ddd-shake-menu","fixture-ddd-shake-roundtrip",
-        "fixture-ddd-ui-showcase"
+        "fixture-ddd-ui-showcase","fixture-ddd-opening","fixture-ddd-ending","fixture-ddd-options",
+        "fixture-ddd-start-intro","fixture-story-signals"
     };
     int i;
     for (i=0;i<(int)(sizeof(names)/sizeof(names[0]));i++)
@@ -327,13 +347,15 @@ static int debug_action(const char* s){
 static void debug_parse_expect(const char* s){
     if (!strcmp(s,"v1")) DBG_CFG.expect_version=1;
     else if (!strcmp(s,"v2")) DBG_CFG.expect_version=2;
+    else if (!strcmp(s,"v3")) DBG_CFG.expect_version=3;
+    else if (!strcmp(s,"v4")) DBG_CFG.expect_version=4;
     else debug_error("invalid-expect");
 }
 static void debug_validate_cli(void){
     int a=DBG_CFG.action;
     int finite=DBG_CFG.have_action;
     int room_action=a>=1 && a<=6;
-    int save_action=a==9 || a==10 || a==20;
+    int save_action=a==9 || a==10 || a==20 || a==24;
     if (DBG_CFG.have_telemetry_interval && !DBG_CFG.have_telemetry)
         debug_error("telemetry-interval-without-telemetry");
     if (finite){
@@ -361,10 +383,53 @@ static void debug_validate_cli(void){
     if (a==16 && !DBG_CFG.have_retry_key) debug_error("retry-key-required");
     if (a==20 && (!DBG_CFG.have_expect_version || DBG_CFG.expect_version!=2))
         debug_error("shake-roundtrip-expect-v2");
+    if (a==24 && (!DBG_CFG.have_options_checkpoint || !DBG_CFG.have_expect_version ||
+                  DBG_CFG.expect_version!=4))
+        debug_error("options-fixture-controls-required");
     if (a==21 && (!DBG_CFG.have_showcase_checkpoint || !DBG_CFG.have_hold_ms))
         debug_error("showcase-controls-required");
-    if (a!=21 && (DBG_CFG.have_showcase_checkpoint || DBG_CFG.have_hold_ms))
+    if (a==22 && DBG_CFG.have_checkpoint && !DBG_CFG.have_opening_checkpoint)
+        debug_invalid_checkpoint();
+    if (a==23 && DBG_CFG.have_checkpoint && !DBG_CFG.have_ending_checkpoint)
+        debug_invalid_checkpoint();
+    if (a==25 && DBG_CFG.have_checkpoint && !DBG_CFG.have_start_intro_checkpoint)
+        debug_invalid_checkpoint();
+    if (a==22 && (!DBG_CFG.have_opening_checkpoint || !DBG_CFG.have_hold_ms))
+        debug_error("opening-controls-required");
+    if (a==23 && (!DBG_CFG.have_ending_checkpoint || !DBG_CFG.have_core_count || !DBG_CFG.have_hold_ms))
+        debug_error("ending-controls-required");
+    if (a==25 && (!DBG_CFG.have_start_intro_checkpoint || !DBG_CFG.have_hold_ms))
+        debug_error("start-intro-controls-required");
+    if (a!=21 && DBG_CFG.have_showcase_checkpoint)
         debug_error("showcase-controls-incompatible");
+    if (a!=22 && DBG_CFG.have_opening_checkpoint)
+        debug_error("opening-controls-incompatible");
+    if (a!=23 && DBG_CFG.have_ending_checkpoint)
+        debug_error("ending-controls-incompatible");
+    if (a!=23 && DBG_CFG.have_core_count)
+        debug_error("core-count-incompatible");
+    if (a!=24 && DBG_CFG.have_options_checkpoint)
+        debug_error("options-checkpoint-incompatible");
+    if (a!=25 && DBG_CFG.have_start_intro_checkpoint)
+        debug_error("start-intro-checkpoint-incompatible");
+    if (a!=21 && a!=22 && a!=23 && a!=24 && a!=25 && DBG_CFG.have_checkpoint &&
+        !DBG_CFG.have_showcase_checkpoint)
+        debug_error("unknown-checkpoint");
+    if (a!=21 && a!=22 && a!=23 && a!=24 && a!=25 && DBG_CFG.have_hold_ms)
+        debug_error("showcase-controls-incompatible");
+    if (a==22 && (DBG_CFG.seed!=1 || DBG_CFG.difficulty!=0 || DBG_CFG.weapon!=0 ||
+                  DBG_CFG.ngplus!=1 || DBG_CFG.hold_ms!=10000))
+        debug_error("opening-controls-mismatch");
+    if (a==23 && (DBG_CFG.seed!=1 || DBG_CFG.difficulty!=0 || DBG_CFG.weapon!=0 ||
+                  DBG_CFG.ngplus!=1 || DBG_CFG.hold_ms!=10000))
+        debug_error("ending-controls-mismatch");
+    if (a==25 && (DBG_CFG.seed!=1 || DBG_CFG.difficulty!=0 || DBG_CFG.weapon!=0 ||
+                  DBG_CFG.ngplus!=1 || DBG_CFG.hold_ms!=10000))
+        debug_error("start-intro-controls-mismatch");
+    if (a==23 && ((DBG_CFG.ending_checkpoint==1 && DBG_CFG.core_count!=0) ||
+                  (DBG_CFG.ending_checkpoint==2 && (DBG_CFG.core_count<1 || DBG_CFG.core_count>3)) ||
+                  (DBG_CFG.ending_checkpoint==3 && DBG_CFG.core_count!=4)))
+        debug_error("invalid-core-count");
     if (DBG_CFG.have_source_path && a!=21)
         debug_error("source-path-incompatible");
     if (DBG_CFG.have_force_target && (a!=3 && a!=4)) debug_error("force-target-incompatible");
@@ -402,7 +467,7 @@ static void debug_validate_cli(void){
     }
     if (DBG_CFG.have_isolated_profile){
         debug_validate_isolated_profile();
-        if (!DBG_CFG.have_action || (a!=9 && a!=10 && a!=20) ||
+        if (!DBG_CFG.have_action || (a!=9 && a!=10 && a!=20 && a!=24) ||
             !DBG_CFG.have_expect_version || DBG_CFG.clean_profile)
             debug_error("unsafe-isolated-profile");
     }
@@ -441,15 +506,65 @@ static void debug_parse(int argc, char** argv){
         else if(!strcmp(a,"--expect")){ debug_need(i,argc); if(DBG_CFG.have_expect_version)debug_error("duplicate-option"); debug_parse_expect(argv[++i]); DBG_CFG.have_expect_version=1; }
         else if(!strcmp(a,"--source-path")){ debug_need(i,argc); if(DBG_CFG.have_source_path)debug_error("duplicate-option"); if(strlen(argv[++i])>=sizeof DBG_CFG.source_path)debug_error("invalid-source-path"); debug_validate_source_path(argv[i]); strcpy(DBG_CFG.source_path,argv[i]); DBG_CFG.have_source_path=1; }
         else if(!strcmp(a,"--retry-key")){ debug_need(i,argc); if(DBG_CFG.have_retry_key)debug_error("duplicate-option"); if(!strcmp(argv[++i],"r"))DBG_CFG.retry_key=SAPP_KEYCODE_R; else if(!strcmp(argv[i],"enter"))DBG_CFG.retry_key=SAPP_KEYCODE_ENTER; else debug_error("unknown-retry-key"); DBG_CFG.have_retry_key=1; }
-        else if(!strcmp(a,"--checkpoint")){ debug_need(i,argc); if(DBG_CFG.have_showcase_checkpoint)debug_error("duplicate-option"); if(!strcmp(argv[++i],"death"))DBG_CFG.showcase_checkpoint=1; else if(!strcmp(argv[i],"door"))DBG_CFG.showcase_checkpoint=2; else if(!strcmp(argv[i],"pause"))DBG_CFG.showcase_checkpoint=3; else debug_error("unknown-checkpoint"); DBG_CFG.have_showcase_checkpoint=1; }
+        else if(!strcmp(a,"--checkpoint")){
+            const char* checkpoint;
+            debug_need(i,argc);
+            if(DBG_CFG.have_checkpoint) debug_error("duplicate-option");
+            checkpoint=argv[++i];
+            if(strlen(checkpoint)>=sizeof DBG_CFG.checkpoint) debug_error("invalid-checkpoint");
+            strcpy(DBG_CFG.checkpoint,checkpoint); DBG_CFG.have_checkpoint=1;
+            if(!strcmp(checkpoint,"death")) DBG_CFG.showcase_checkpoint=1;
+            else if(!strcmp(checkpoint,"door")) DBG_CFG.showcase_checkpoint=2;
+            else if(!strcmp(checkpoint,"pause")) DBG_CFG.showcase_checkpoint=3;
+            else if(!strcmp(checkpoint,"hit")) DBG_CFG.showcase_checkpoint=4;
+            else if(!strcmp(checkpoint,"boss-reward")) DBG_CFG.showcase_checkpoint=5;
+            else if(!strcmp(checkpoint,"relic-swap")) DBG_CFG.showcase_checkpoint=6;
+            else if(!strcmp(checkpoint,"memory-event")) DBG_CFG.showcase_checkpoint=7;
+            else if(!strcmp(checkpoint,"boss-intro")) DBG_CFG.showcase_checkpoint=8;
+            else if(!strcmp(checkpoint,"core-flashback")) DBG_CFG.showcase_checkpoint=9;
+            else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
+            else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
+            else if(!strcmp(checkpoint,"retry")) DBG_CFG.opening_checkpoint=3;
+            else if(!strcmp(checkpoint,"recover")) DBG_CFG.opening_checkpoint=4;
+            else if(!strcmp(checkpoint,"transfer")) DBG_CFG.opening_checkpoint=5;
+            else if(!strcmp(checkpoint,"title-handoff")) DBG_CFG.opening_checkpoint=6;
+            else if(!strcmp(checkpoint,"skip-key")) DBG_CFG.opening_checkpoint=7;
+            else if(!strcmp(checkpoint,"skip-mouse")) DBG_CFG.opening_checkpoint=8;
+            else if(!strcmp(checkpoint,"wake")) DBG_CFG.opening_checkpoint=9;
+            else if(!strcmp(checkpoint,"scan")) DBG_CFG.opening_checkpoint=10;
+            else if(!strcmp(checkpoint,"reveal")) DBG_CFG.opening_checkpoint=11;
+            else if(!strcmp(checkpoint,"title-flow")) DBG_CFG.opening_checkpoint=12;
+            else if(!strcmp(checkpoint,"recovery-failed")) DBG_CFG.ending_checkpoint=1;
+            else if(!strcmp(checkpoint,"partial-recovery")) DBG_CFG.ending_checkpoint=2;
+            else if(!strcmp(checkpoint,"complete-recovery")) DBG_CFG.ending_checkpoint=3;
+            else if(!strcmp(checkpoint,"options-toggle")) DBG_CFG.options_checkpoint=1;
+            else if(!strcmp(checkpoint,"options-invalid-state")) DBG_CFG.options_checkpoint=2;
+            else if(!strcmp(checkpoint,"options-invalid-input")) DBG_CFG.options_checkpoint=3;
+            else if(!strcmp(checkpoint,"first-run")) DBG_CFG.start_intro_checkpoint=1;
+            else if(!strcmp(checkpoint,"placement")) DBG_CFG.start_intro_checkpoint=2;
+            else if(!strcmp(checkpoint,"latch")) DBG_CFG.start_intro_checkpoint=3;
+            else if(!strcmp(checkpoint,"drive-stop-hold")) DBG_CFG.start_intro_checkpoint=4;
+            else if(!strcmp(checkpoint,"track")) DBG_CFG.start_intro_checkpoint=5;
+            else if(!strcmp(checkpoint,"fragment")) DBG_CFG.start_intro_checkpoint=6;
+            else if(!strcmp(checkpoint,"handoff")) DBG_CFG.start_intro_checkpoint=7;
+            else if(!strcmp(checkpoint,"repeat-bypass")) DBG_CFG.start_intro_checkpoint=8;
+            else if(!strcmp(checkpoint,"queued-replay")) DBG_CFG.start_intro_checkpoint=9;
+            else if(!strcmp(checkpoint,"post-replay-bypass")) DBG_CFG.start_intro_checkpoint=10;
+            if(DBG_CFG.showcase_checkpoint) DBG_CFG.have_showcase_checkpoint=1;
+            if(DBG_CFG.opening_checkpoint) DBG_CFG.have_opening_checkpoint=1;
+            if(DBG_CFG.ending_checkpoint) DBG_CFG.have_ending_checkpoint=1;
+            if(DBG_CFG.options_checkpoint) DBG_CFG.have_options_checkpoint=1;
+            if(DBG_CFG.start_intro_checkpoint) DBG_CFG.have_start_intro_checkpoint=1;
+        }
+        else if(!strcmp(a,"--core-count")){ debug_need(i,argc); if(DBG_CFG.have_core_count)debug_error("duplicate-option"); DBG_CFG.core_count=(int)debug_uint(argv[++i],4); DBG_CFG.have_core_count=1; }
         else if(!strcmp(a,"--hold-ms")){ debug_need(i,argc); if(DBG_CFG.have_hold_ms)debug_error("duplicate-option"); DBG_CFG.hold_ms=(int)debug_uint(argv[++i],60000UL); if(DBG_CFG.hold_ms<1000)debug_error("out-of-range"); DBG_CFG.have_hold_ms=1; }
         else if(!strcmp(a,"--audiodump")){ debug_need(i,argc); if(DBG_CFG.have_audio_dump)debug_error("duplicate-option"); if(!*argv[++i]||strlen(argv[i])>=sizeof DBG_CFG.audio_dump)debug_error("invalid-audio-path"); strcpy(DBG_CFG.audio_dump,argv[i]); DBG_CFG.have_audio_dump=1; }
         else debug_error("unknown-option");
     }
     if(DBG_CFG.have_action && !DBG_CFG.clean_profile &&
-       DBG_CFG.action!=9 && DBG_CFG.action!=10 && DBG_CFG.action!=20) debug_error("clean-profile-required");
+       DBG_CFG.action!=9 && DBG_CFG.action!=10 && DBG_CFG.action!=20 && DBG_CFG.action!=24) debug_error("clean-profile-required");
     if(DBG_CFG.have_action && !DBG_CFG.have_seed &&
-       DBG_CFG.action!=9 && DBG_CFG.action!=10 && DBG_CFG.action!=20) debug_error("seed-required");
+       DBG_CFG.action!=9 && DBG_CFG.action!=10 && DBG_CFG.action!=20 && DBG_CFG.action!=24) debug_error("seed-required");
     debug_validate_cli();
 }
 #endif

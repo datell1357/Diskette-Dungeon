@@ -89,6 +89,7 @@ void draw_ui_begin(void);
 // primitives (current sgl context)
 void draw_quad(float x, float y, float w, float h, col3 c, float a);
 void draw_sprite(int sprite_id, float x, float y, float w, float h, col3 tint, float a, bool flip_x, float rot);
+void draw_codex_sprite(int sprite_id, float x, float y, float w, float h, col3 tint, float a);
 void draw_light_blob(float x, float y, float radius, col3 c, float intensity);
 void draw_shadowed_light(float x, float y, float radius, col3 c, float intensity); // player key light w/ shadows
 void draw_glow_blob(float x, float y, float radius, col3 c, float intensity);
@@ -128,6 +129,8 @@ typedef enum {
 } SfxId;
 void sfx_play(SfxId id);
 void music_set(int track); // -1 off, 0 title, 1..4 biomes, 5 boss, 6 ending
+void audio_set_bgm_enabled(bool enabled);
+void audio_set_sfx_enabled(bool enabled);
 
 // game (game.c)
 void game_init(void);

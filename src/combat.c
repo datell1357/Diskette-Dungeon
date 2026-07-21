@@ -14,6 +14,8 @@ float combat_slash_t(void){ return slash_t; }
 v2 combat_slash_dir(void){ return slash_dir; }
 
 static Rng crng = { 0xFEEDFACE777ull };
+static bool phase_stepping;
+static bool execution_burst;
 
 // ----------------------------------------------------------- 무게 변화 → 스탯 피드백
 // 픽업/드롭으로 무게가 바뀌면 공격/이속/빛 변화를 플로터로 띄운다.
@@ -49,7 +51,7 @@ void spawn_enemy(int type, v2 pos){
         memset(e,0,sizeof(*e));
         e->active=true; e->type=type; e->pos=pos;
         e->spawn_t=0.5f;
-        float diff = 1.0f + G.difficulty*0.3f + (G.ngplus?0.5f:0.0f);
+        float diff = 1.0f + G.difficulty*0.5f + (G.ngplus?0.5f:0.0f);
         switch (type){
             case E_SLIME:      e->hp=4*diff;  e->radius=7; break;
             case E_MINI_SLIME: e->hp=2*diff;  e->radius=4; break;
@@ -78,7 +80,7 @@ void spawn_boss(int biome){
     e->active=true;
     e->type = E_BOSS_ROT + biome;
     e->pos = V2(G.room.w*TILE*0.72f, G.room.h*TILE*0.5f);
-    float diff = 1.0f + G.difficulty*0.35f + (G.ngplus?0.6f:0.0f);
+    float diff = (1.0f + G.difficulty*0.35f + (G.ngplus?0.6f:0.0f))*1.5f;
     switch (e->type){
         case E_BOSS_ROT:    e->hp=80*diff;  e->radius=20; break;
         case E_BOSS_ECHO:   e->hp=115*diff; e->radius=18; break;
@@ -101,9 +103,17 @@ static Bullet* spawn_bullet(bool from_player,int kind,v2 pos,v2 vel,float dmg,fl
         b->active=true; b->from_player=from_player; b->kind=kind;
         b->pos=pos; b->vel=vel; b->dmg=dmg; b->life=life; b->radius=radius; b->pierce=pierce;
         b->last_hit=-1;
+        b->attack_group=from_player?G.pl.attack_group:0;
         return b;
     }
     return NULL;
+}
+
+static int random_unowned_wrelic(int excluded){
+    int choices[WR_COUNT], count=0;
+    for (int i=0;i<WR_COUNT;i++)
+        if (i!=excluded && !player_has_wrelic(i)) choices[count++]=i;
+    return count>0? choices[rng_i(&crng,count)] : -1;
 }
 
 // ----------------------------------------------------------- damage
@@ -145,9 +155,11 @@ static void enemy_finalize_death(Entity* e, int reason){
         G.timescale=0.25f; G.light_mul=1.0f; G.ambient_mul=1.0f;
         int RW=G.room.w,RH=G.room.h;
         spawn_pickup(PK_CORE,V2(RW*TILE*0.5f,RH*TILE*0.5f),(Weapon){0,0},0,G.room.biome);
-        int wbase=G.pl.weapon.type*2; v2 cc=V2(RW*TILE*0.5f,RH*TILE*0.5f);
-        spawn_pickup(PK_WRELIC,v2add(cc,V2(-40,30)),(Weapon){0,0},wbase,0);
-        spawn_pickup(PK_WRELIC,v2add(cc,V2(40,30)),(Weapon){0,0},wbase+1,0);
+        int left_relic=random_unowned_wrelic(-1);
+        int right_relic=random_unowned_wrelic(left_relic);
+        v2 cc=V2(RW*TILE*0.5f,RH*TILE*0.5f);
+        if (left_relic>=0) spawn_pickup(PK_WRELIC,v2add(cc,V2(-40,30)),(Weapon){0,0},left_relic,0);
+        if (right_relic>=0) spawn_pickup(PK_WRELIC,v2add(cc,V2(40,30)),(Weapon){0,0},right_relic,0);
         int exdir=opposite(G.room.entry_dir),ex0,ey0,ex1,ey1;
         if(exdir==DIR_R){ex0=ex1=RW-1;ey0=RH/2;ey1=RH/2+1;}
         else if(exdir==DIR_L){ex0=ex1=0;ey0=RH/2;ey1=RH/2+1;}
@@ -174,33 +186,98 @@ void dd_debug_clear_room_enemies(void){
     }
 }
 #endif
-static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool crit){
+static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool crit,bool from_player,uint32_t attack_group){
     if(e->type==E_ECHO_GHOST)return;
+    bool is_boss=e->type>=E_BOSS_ROT&&e->type<=E_BOSS_NULL;
+    bool execute=from_player && !is_boss && !execution_burst &&
+        G.pl.weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_EXECUTE) &&
+        e->hp<=e->maxhp*0.25f;
+    if (execute) dmg=e->hp;
+    if (from_player){
+        float proximity=1.0f-v2len(v2sub(e->pos,G.pl.pos))/player_light_radius();
+        dmg*=1.0f+clampf(proximity,0.0f,1.0f)*0.20f;
+    }
     if(e->type==E_SENTINEL){v2 face=v2norm(e->vel),in=v2norm(v2sub(e->pos,from));if(face.x*in.x+face.y*in.y<-0.4f)dmg*=0.35f;}
     if(e->type==E_SHIELDER){v2 face=V2(cosf(e->face),sinf(e->face)),in=v2norm(v2sub(from,e->pos));
         if(face.x*in.x+face.y*in.y>0.64f){dmg*=0.25f;burst(e->pos,4,COL(0x9FFFF0),80,0.3f,1.8f,true);sfx_play(SFX_DENY);}}
     e->hp-=dmg;e->flash=0.12f;
+    if (from_player){
+        for (int i=0;i<MAX_ENTITIES;i++) if (e==&G.ents[i]){
+            EnemyFeedback* feedback=&G.enemy_feedback[i];
+            feedback->pos=e->pos;
+            feedback->t=0.9f;
+            feedback->hp=clampf(e->hp/e->maxhp,0.0f,1.0f);
+            feedback->damage=dmg;
+            feedback->radius=e->radius;
+            feedback->crit=crit;
+            feedback->elite=e->elite;
+            break;
+        }
+        e->player_damaged=true;
+        e->player_damage=dmg;
+        e->player_damage_t=0.9f;
+        e->player_damage_crit=crit;
+    }
     if (burn > e->burn) e->burn = burn;
     if (slow > e->slow) e->slow = slow;
-    v2 kb=v2norm(v2sub(e->pos,from));bool is_boss=e->type>=E_BOSS_ROT&&e->type<=E_BOSS_NULL;
+    v2 kb=v2norm(v2sub(e->pos,from));
     if(!is_boss)e->vel=v2add(e->vel,v2scale(kb,90.0f));
-    G.hitstop=fmaxf(G.hitstop,crit?0.07f:0.035f);G.shake=fmaxf(G.shake,crit?2.5f:1.2f);
-    burst(e->pos,crit?10:5,COL(0xFF3D7F),110,0.4f,2.2f,true);sfx_play(SFX_HIT);
-    if(crit)add_floater(e->pos,"치명!",COL(0xFFD060));
-    if(e->hp<=0)enemy_finalize_death(e,DEATH_REASON_DAMAGE);
+    if (!from_player || G.pl.impact_group!=attack_group){
+        G.pl.impact_group=attack_group;
+        G.hitstop=fmaxf(G.hitstop,crit?0.07f:0.035f);G.shake=fmaxf(G.shake,crit?2.5f:1.2f);
+        burst(e->pos,crit?10:5,COL(0xFF3D7F),110,0.4f,2.2f,true);
+    }
+    sfx_play(SFX_HIT);
+    if(e->hp<=0){
+        v2 death_pos=e->pos;
+        if (execute){
+            G.pl.hp=fminf((float)G.pl.maxhp,G.pl.hp+0.25f);
+            execution_burst=true;
+            for (int i=0;i<MAX_ENTITIES;i++){
+                Entity* other=&G.ents[i];
+                if (!other->active || other==e || other->type==E_ECHO_GHOST) continue;
+                if (v2len(v2sub(other->pos,death_pos))<40.0f)
+                    enemy_damage(other,player_attack_damage()*0.5f,death_pos,burn,slow,false,true,attack_group);
+            }
+            execution_burst=false;
+        }
+        enemy_finalize_death(e,DEATH_REASON_DAMAGE);
+        if (from_player && !phase_stepping && G.pl.weapon.type==WPN_SWORD &&
+            player_has_wrelic(WR_SWORD_PHASE)){
+            Entity* target=NULL;
+            float best=180.0f;
+            for (int i=0;i<MAX_ENTITIES;i++){
+                Entity* other=&G.ents[i];
+                if (!other->active || other->type==E_ECHO_GHOST) continue;
+                float dist=v2len(v2sub(other->pos,death_pos));
+                if (dist<best){ best=dist; target=other; }
+            }
+            if (target){
+                G.pl.pos=target->pos;
+                G.pl.vel=V2(0,0);
+                G.pl.iframes=fmaxf(G.pl.iframes,0.25f);
+                phase_stepping=true;
+                enemy_damage(target,player_attack_damage()*2.0f,G.pl.pos,burn,slow,crit,true,attack_group);
+                phase_stepping=false;
+            }
+        }
+    }
 }
 
 #ifdef DD_DEBUG
 extern int dbg_god;
 #endif
 
-void player_take_damage(v2 from){
+static void player_take_damage_typed(v2 from,float damage,int source_type){
     Player* p=&G.pl;
     if (p->iframes>0 || p->dash_t>0) return;
 #ifdef DD_DEBUG
     if (dbg_god){ p->iframes=0.3f; return; }
 #endif
-    p->hp -= 1.0f;
+    player_sync_light_shield();
+    float absorbed=fminf(p->shield,damage);
+    p->shield-=absorbed;
+    p->hp-=damage-absorbed;
     p->iframes = 1.0f;
     v2 kb=v2norm(v2sub(p->pos,from));
     p->vel = v2add(p->vel, v2scale(kb,180.0f));
@@ -219,9 +296,18 @@ void player_take_damage(v2 from){
             p->iframes=2.0f;
             return;
         }
+        G.death_source_type=source_type;
         // 데이터 손상 — 사망
         settle_run_once(SETTLE_DEATH);
     }
+}
+
+void player_take_damage_amount(v2 from,float damage){
+    player_take_damage_typed(from,damage,-1);
+}
+
+void player_take_damage(v2 from){
+    player_take_damage_amount(from,1.0f);
 }
 
 // ----------------------------------------------------------- weapons
@@ -232,11 +318,7 @@ static void fire_weapon(float dt){
     if (p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_WAVE)) cd_mul*=1.3f; // 검기: 공속 -30%
     const float kinship_cd_mul =
         1.0f-0.04f*fminf((float)G.memory.kept[MEM_TAG_KINSHIP],2.0f);
-    float dmg = wd->dmg;
-    dmg *= 1.0f + fminf((float)G.memory.kept[MEM_TAG_COURAGE],2.0f)*0.05f;
-    dmg *= 1.0f + weight_frac()*0.5f;          // 무거울수록 강타 (최대 +50%)
-    dmg *= 1.0f + G.meta.upg[1]*0.05f;         // 영구 강화
-    if (p->relics[RELIC_BADSECTOR] && p->hp<=2.0f) dmg*=1.5f;
+    float dmg = player_attack_damage();
     float burn = p->weapon.prefix==PFX_HOT? 3.0f:0.0f;
     float slow = p->weapon.prefix==PFX_COLD? 2.0f:0.0f;
     bool crit = p->weapon.prefix==PFX_BROKEN && rng_i(&crng,10)<3;
@@ -252,14 +334,18 @@ static void fire_weapon(float dt){
         if (p->charging){
             p->charging=false;
             if (p->attack_cd<=0){
+                p->attack_group++;
                 float mul = 1.0f+p->charge*2.0f;
                 bool rail = player_has_wrelic(WR_CANNON_RAIL) && p->charge>0.85f; // 완충 시 관통 레일
                 float bspeed = rail? wd->speed*1.9f : wd->speed;
                 float blife  = rail? 1.6f : 1.2f;
                 float brad   = rail? 3.5f : 4.0f+p->charge*4.0f;
                 int   bpc    = rail? 999 : 3;
+                bool recoil = player_has_wrelic(WR_CANNON_RECOIL);
+                if (recoil){ mul*=1.5f; brad*=1.4f; }
                 Bullet* b=spawn_bullet(true,1,p->pos,v2scale(p->aim,bspeed),dmg*mul,blife,brad,bpc);
-                if (b){ b->burn=burn; b->slow=slow; b->crit=crit; }
+                if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->delayed_fuse=player_has_wrelic(WR_CANNON_FUSE); }
+                if (recoil) p->vel=v2add(p->vel,v2scale(p->aim,-130.0f));
                 p->attack_cd = wd->cooldown*cd_mul*kinship_cd_mul;
                 G.shake=fmaxf(G.shake,1.0f+p->charge*2.0f);
                 sfx_play(SFX_SHOOT);
@@ -270,6 +356,7 @@ static void fire_weapon(float dt){
     }
     if (!attack_held || p->attack_cd>0) return;
     p->attack_cd = wd->cooldown*cd_mul*kinship_cd_mul;
+    p->attack_group++;
 
     switch (p->weapon.type){
     case WPN_SWORD: {
@@ -286,19 +373,14 @@ static void fire_weapon(float dt){
             if (dist<reach+e->radius){
                 v2 nd=v2norm(d);
                 if (whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f)
-                    enemy_damage(e,dmg,p->pos,burn,slow,crit);
+                    enemy_damage(e,dmg,p->pos,burn,slow,crit,true,p->attack_group);
             }
         }
-        // 적 탄 베어내기 (회전 베기는 360°)
-        for (int i=0;i<MAX_BULLETS;i++){
+        if (whirl) for (int i=0;i<MAX_BULLETS;i++){
             Bullet* b=&G.bullets[i];
             if (!b->active||b->from_player) continue;
-            v2 d=v2sub(b->pos,p->pos);
-            float cut = whirl? 38.0f : 30.0f;
-            if (v2len(d)<cut){
-                if (whirl || v2norm(d).x*p->aim.x+v2norm(d).y*p->aim.y>0.0f){
-                    b->active=false; burst(b->pos,3,COL(0x9FFFF0),60,0.3f,1.5f,true);
-                }
+            if (v2len(v2sub(b->pos,p->pos))<38.0f){
+                b->active=false; burst(b->pos,3,COL(0x9FFFF0),60,0.3f,1.5f,true);
             }
         }
         // 검기: 관통하며 사거리 끝까지 날아가는 칼날 (벽에 닿으면 소멸)
@@ -312,12 +394,15 @@ static void fire_weapon(float dt){
         float base=atan2f(p->aim.y,p->aim.x);
         bool wide = player_has_wrelic(WR_SPRAY_WIDE);
         bool rico = player_has_wrelic(WR_SPRAY_RICO);
-        int pellets = wide? 8:5;
-        float spread = wide? 0.13f:0.16f;
-        float plife  = wide? 0.20f:0.26f;
+        bool pierce = player_has_wrelic(WR_SPRAY_PIERCE);
+        bool choke = player_has_wrelic(WR_SPRAY_CHOKE);
+        int pellets = wide? 8:(pierce?4:5);
+        float spread = choke?0.055f:(wide?0.13f:0.16f);
+        float plife  = choke?0.36f:(wide?0.20f:0.26f);
+        float pellet_dmg=dmg*(choke?1.35f:1.0f);
         for (int i=0;i<pellets;i++){
             float a=base+(i-(pellets-1)*0.5f)*spread+rng_range(&crng,-0.05f,0.05f);
-            Bullet* b=spawn_bullet(true,2,p->pos,V2(cosf(a)*wd->speed,sinf(a)*wd->speed),dmg,plife,3.0f,0);
+            Bullet* b=spawn_bullet(true,2,p->pos,V2(cosf(a)*wd->speed,sinf(a)*wd->speed),pellet_dmg,plife,3.0f,pierce?1:0);
             if (b){ b->burn=burn;b->slow=slow;b->crit=crit; if(rico){ b->bounces=1; b->life+=0.18f; } }
         }
         p->vel=v2add(p->vel,v2scale(p->aim,-40.0f)); // 반동
@@ -336,7 +421,7 @@ static void fire_weapon(float dt){
     case WPN_LANCE: {
         sfx_play(SFX_SHOOT);
         Bullet* b=spawn_bullet(true,4,p->pos,v2scale(p->aim,wd->speed),dmg,1.1f,5.0f,999);
-        if (b){ b->burn=burn;b->slow=slow;b->crit=crit; }
+        if (b){ b->burn=burn;b->slow=slow;b->crit=crit; b->bounces=player_has_wrelic(WR_LANCE_PIERCE)?3:0; }
         G.shake=fmaxf(G.shake,1.5f);
         if (player_has_wrelic(WR_LANCE_CHARGE)){ // 돌격: 앞으로 전진 + 짧은 무적
             p->vel=v2add(p->vel,v2scale(p->aim,300.0f));
@@ -378,6 +463,11 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
         if (rng_i(&crng,8)==0) spawn_particle(e->pos,V2(rng_range(&crng,-20,20),-40),0.4f,2,COL(0xFF7A3D),true,2,0);
         if (e->hp<=0){ enemy_finalize_death(e,DEATH_REASON_BURN); return; }
     }
+    if (e->root>0){
+        e->root-=real_dt;
+        e->vel=V2(0,0);
+        return;
+    }
     v2 to_p = v2sub(p->pos,e->pos);
     float dist = v2len(to_p);
     v2 dir = v2norm(to_p);
@@ -407,12 +497,12 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
             v2 v = v2add(v2scale(dir,55.0f), V2(-dir.y,dir.x));
             v = v2add(v, v2scale(V2(-dir.y,dir.x), sinf(e->t1)*45.0f));
             e->vel = v2scale(v,slow_mul);
-            if (e->t0<=0){ e->state=1; e->t0=0.5f;
+            if (e->t0<=0){ e->state=1; e->t0=0.4375f;
                            v2 lead=v2norm(v2sub(v2add(p->pos,v2scale(p->vel,0.25f)),e->pos));
-                           e->vel=v2scale(lead,205.0f*slow_mul);
+                           e->vel=v2scale(lead,164.0f*slow_mul);
                            burst(e->pos,4,COL(0xFF3D7F),60,0.3f,1.5f,true); }
         } else {
-            if (e->t0<=0){ e->state=0; e->t0=rng_range(&crng,1.8f,2.6f); }
+            if (e->t0<=0){ e->state=0; e->t0=rng_range(&crng,2.3f,3.1f); }
         }
         e->pos = resolve_collision(e->pos,e->vel,e->radius,bat_dt);
     } break;
@@ -450,7 +540,7 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
             if (e->t0>0.25f) e->target=p->pos; // 발사 0.25초 전 위치 고정
             if (e->t0<=0){
                 v2 d=v2norm(v2sub(e->target,e->pos));
-                spawn_bullet(false,1,e->pos,v2scale(d,300.0f),1,2.0f,3.0f,0);
+                spawn_bullet(false,1,e->pos,v2scale(d,562.5f),2.0f,2.0f,3.0f,0);
                 sfx_play(SFX_SHOOT);
                 e->state=0; e->t0=rng_range(&crng,1.8f,2.4f);
             }
@@ -489,14 +579,14 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
         if (e->state==0){
             e->vel=v2scale(e->vel,1.0f-6.0f*ai_dt);
             if (e->t0<=0){
-                e->state=1; e->t0=0.45f;
+                e->state=1; e->t0=0.39375f;
                 v2 tgt=history_at(1.0f);
-                e->vel=v2scale(v2norm(v2sub(tgt,e->pos)),330.0f*slow_mul);
+                e->vel=v2scale(v2norm(v2sub(tgt,e->pos)),264.0f*slow_mul);
                 burst(e->pos,4,COL(0xFF3D7F),60,0.3f,1.5f,true);
             }
         } else {
             if (rng_i(&crng,3)==0) spawn_particle(e->pos,V2(0,0),0.3f,2.5f,COL(0xFF3D7F),true,1,0);
-            if (e->t0<=0){ e->state=0; e->t0=rng_range(&crng,0.8f,1.5f); }
+            if (e->t0<=0){ e->state=0; e->t0=rng_range(&crng,1.3f,2.0f); }
         }
         e->pos = resolve_collision(e->pos,e->vel,e->radius,phase_dt);
     } break;
@@ -546,11 +636,11 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
         e->t0 -= (e->state==0 ? ai_dt : real_dt);
         if (e->state==0){
             e->vel = v2scale(dir,45.0f*slow_mul);
-            if (e->t0<=0 && dist<120.0f){ e->state=1; e->t0=0.6f; e->target=p->pos; }
+            if (e->t0<=0 && dist<120.0f){ e->state=1; e->t0=0.525f; e->target=p->pos; }
         } else {
             v2 d=v2norm(v2sub(e->target,e->pos));
-            e->vel = v2scale(d,240.0f*slow_mul);
-            if (e->t0<=0){ e->state=0; e->t0=2.5f; }
+            e->vel = v2scale(d,192.0f*slow_mul);
+            if (e->t0<=0){ e->state=0; e->t0=3.0f; }
         }
         e->pos = resolve_collision(e->pos,e->vel,e->radius,phase_dt);
     } break;
@@ -579,10 +669,14 @@ static void update_enemy(Entity* e,float real_dt,float ai_dt){
 
     // 접촉 피해 (배드비트는 도화선 중 폭발이 위협이므로 접촉 끔)
     bool fuse = (e->type==E_BOMBER && e->state==1);
-    if (!fuse && dist < e->radius+5.0f) player_take_damage(e->pos);
+    if (!fuse && dist < e->radius+5.0f) player_take_damage_typed(e->pos,0.5f,e->type);
 }
 
 // ----------------------------------------------------------- bosses
+static float boss_damage(float base){
+    return base+(G.difficulty==2?0.5f:0.0f);
+}
+
 static void boss_radial(Entity* e,int n,float speed,float offset){
     for (int i=0;i<n;i++){
         float a = offset + i*6.2832f/n;
@@ -630,7 +724,7 @@ static void update_zones(float dt){
             if (z->kind==1) hit = fabsf(p->pos.y-z->pos.y)<z->r;       // 가로줄
             else if (z->kind==2) hit = fabsf(p->pos.x-z->pos.x)<z->r;  // 세로줄
             else hit = v2len(v2sub(p->pos,z->pos))<z->r;               // 원형
-            if (hit) player_take_damage(z->pos);
+            if (hit) player_take_damage_amount(z->pos,boss_damage(1.0f));
             if (z->kind==1) for (int k=0;k<14;k++) burst(V2(rng_range(&crng,0,G.room.w*TILE),z->pos.y),2,COL(0xFF3D7F),110,0.45f,2.2f,true);
             else if (z->kind==2) for (int k=0;k<14;k++) burst(V2(z->pos.x,rng_range(&crng,0,G.room.h*TILE)),2,COL(0xFF3D7F),110,0.45f,2.2f,true);
             else burst(z->pos,14,COL(0xFF3D7F),130,0.5f,2.5f,true);
@@ -676,7 +770,7 @@ static void update_boss(Entity* e,float dt){
     if (G.boss_intro) return;
     v2 dir = v2norm(v2sub(p->pos,e->pos));
     float hp_frac = e->hp/e->maxhp;
-    e->t0 -= dt;
+    e->t0 -= dt*1.25f;
 
     switch (e->type){
     case E_BOSS_ROT: {
@@ -689,7 +783,7 @@ static void update_boss(Entity* e,float dt){
                 int pick;
                 // 직전이 돌진(phase==1)이었으면 반드시 원거리/소환으로 — 돌진 연타 방지
                 if (e->phase==1) pick = rng_i(&crng,3)<2?2:3;
-                else { int r=rng_i(&crng,10); pick = r<5?1:(r<8?2:3); } // 50% 돌진 30% 포자 20% 소환
+                else { int r=rng_i(&crng,12); pick = r<4?1:(r<7?2:(r<9?3:4)); }
                 e->state=pick; e->phase=pick; e->t1=0;
                 e->t0 = pick==1? 0.45f:0.0f; // 돌진은 텔레그래프 후 발사
             }
@@ -709,17 +803,17 @@ static void update_boss(Entity* e,float dt){
                 e->pos = resolve_collision(e->pos,e->vel,e->radius,dt);
                 e->vel = v2scale(e->vel,1.0f-2.0f*dt);
                 if (e->t0<=0){
-                    boss_radial(e,8,95.0f,rng_f(&crng)*6.28f); // 돌진 마무리 견제탄
-                    e->state=0; e->t0=1.0f; e->t1=0;           // 돌진 쿨타임 ~1초
+                    boss_radial(e,12,110.0f,rng_f(&crng)*6.28f);
+                    e->state=0; e->t0=0.75f; e->t1=0;
                 }
             }
             break;
         case 2: // 포자 방사 (원거리)
             if (e->t0<=0){
-                boss_radial(e,16,105.0f,rng_f(&crng)*6.28f);
+                boss_radial(e,20,120.0f,rng_f(&crng)*6.28f);
                 e->t1++;
-                e->t0=0.7f/spd;
-                if (e->t1>=3){ e->state=0; e->t0=1.4f; e->t1=0; }
+                e->t0=0.52f/spd;
+                if (e->t1>=4){ e->state=0; e->t0=1.0f; e->t1=0; }
             }
             break;
         case 3: { // 슬라임 소환 + 견제탄
@@ -729,9 +823,17 @@ static void update_boss(Entity* e,float dt){
                 spawn_enemy(E_SLIME,v2add(e->pos,V2(rng_range(&crng,-30,30),rng_range(&crng,-30,30))));
                 burst(e->pos,8,COL(0xFF3D7F),100,0.5f,2,true);
             }
-            boss_radial(e,10,90.0f,rng_f(&crng)*6.28f);
-            e->state=0; e->t0=1.6f;
+            boss_radial(e,14,105.0f,rng_f(&crng)*6.28f);
+            e->state=0; e->t0=1.15f;
         } break;
+        case 4:
+            if (e->t0<=0){
+                boss_ring_gap(e,22,125.0f,atan2f(dir.y,dir.x));
+                e->t1++;
+                e->t0=0.46f/spd;
+                if (e->t1>=3){ e->state=0; e->t0=0.9f; e->t1=0; }
+            }
+            break;
         }
     } break;
     case E_BOSS_ECHO: {
@@ -756,14 +858,14 @@ static void update_boss(Entity* e,float dt){
             if (e->t0<=0){
                 // 5연사: 갈수록 벌어지는 3갈래 부채꼴
                 float base=atan2f(dir.y,dir.x);
-                for (int k=-1;k<=1;k++){
-                    float a2=base+k*(0.10f+0.05f*e->t2);
+                for (int k=-2;k<=2;k++){
+                    float a2=base+k*(0.08f+0.04f*e->t2);
                     spawn_bullet(false,7,e->pos,V2(cosf(a2)*175.0f,sinf(a2)*175.0f),1,3,4,0);
                 }
                 sfx_play(SFX_SHOOT);
                 e->t2++;
-                e->t0=0.14f;
-                if (e->t2>=5){ e->state=2; e->t0=0.7f; e->t2=0; }
+                e->t0=0.11f;
+                if (e->t2>=6){ e->state=2; e->t0=0.55f; e->t2=0; }
             }
             break;
         case 2: // 텔레포트 + 메아리 사격: 플레이어의 '과거 자취'를 쫓는 탄 (ECHO 고유)
@@ -772,30 +874,37 @@ static void update_boss(Entity* e,float dt){
                 e->pos = V2(rng_range(&crng,TILE*4,(G.room.w-4)*TILE),rng_range(&crng,TILE*3,(G.room.h-3)*TILE));
                 burst(e->pos,16,COL(0x7CFCE4),140,0.5f,2.5f,true);
                 sfx_play(SFX_DASH);
-                int shots = hp_frac<0.5f? 3:2;
+                int shots = hp_frac<0.5f? 4:3;
                 for (int k=0;k<shots;k++){
                     v2 past=history_at(0.5f+k*0.5f);
                     v2 d=v2norm(v2sub(past,e->pos));
-                    spawn_bullet(false,7,e->pos,v2scale(d,150.0f),1,3.2f,4,0);
+                    spawn_bullet(false,7,e->pos,v2scale(d,180.0f),1,3.2f,4,0);
                 }
                 sfx_play(SFX_SHOOT);
-                e->state=0; e->t0=rng_range(&crng,1.2f,2.0f);
+                e->state=3; e->t0=0.32f;
+            }
+            break;
+        case 3:
+            if (e->t0<=0){
+                boss_ring_gap(e,22,115.0f,atan2f(dir.y,dir.x));
+                boss_spread(e,dir,5,0.14f,185.0f);
+                e->state=0; e->t0=rng_range(&crng,0.85f,1.4f);
             }
             break;
         }
     } break;
     case E_BOSS_DEFRAG: {
         // 조각모음: 범위지정(AoE) 위주 + 5초마다 벽 배리어로 진입 차단
-        e->t3 -= dt;
+        e->t3 -= dt*1.25f;
         if (e->t3<=0){ e->t3=5.0f; defrag_barrier(e,p); }
         switch (e->state){
         case 0: // 짧은 부유 후 다음 공격 (거의 멈춰서 위치 선점)
             e->vel = v2scale(dir,18.0f);
             e->pos = resolve_collision(e->pos,e->vel,e->radius,dt);
             if (e->t0<=0){
-                int r=rng_i(&crng,10);
+                int r=rng_i(&crng,12);
                 // 0-2 추적타격, 3-4 격자휩쓸기, 5-6 산개폭격, 7 라인융단, 8 조준연사, 9 단발빔
-                e->state = r<3?4:(r<5?5:(r<7?6:(r<8?2:(r<9?3:1))));
+                e->state = r<3?4:(r<5?5:(r<7?6:(r<8?2:(r<9?3:(r<10?1:7)))));
                 e->t1=0; e->t2=0;
                 if (e->state==1){ // 단발 행/열 빔 텔레그래프
                     e->t1 = (float)rng_i(&crng,2);
@@ -812,7 +921,7 @@ static void update_boss(Entity* e,float dt){
                 bool row = e->t1==0;
                 float c = e->t2;
                 float pp = row? p->pos.y : p->pos.x;
-                if (fabsf(pp-c)<TILE*1.2f) player_take_damage(V2(row?p->pos.x-10:c, row?c:p->pos.y-10));
+                if (fabsf(pp-c)<TILE*1.2f) player_take_damage_typed(V2(row?p->pos.x-10:c, row?c:p->pos.y-10),boss_damage(1.0f),e->type);
                 for (int i=0;i<40;i++){
                     v2 bp = row? V2(rng_range(&crng,0,G.room.w*TILE),c) : V2(c,rng_range(&crng,0,G.room.h*TILE));
                     spawn_particle(bp,V2(rng_range(&crng,-30,30),rng_range(&crng,-30,30)),0.4f,2.5f,COL(0x3FE0C5),true,3,0);
@@ -822,13 +931,13 @@ static void update_boss(Entity* e,float dt){
             break;
         case 2: { // 라인 융단: 가로 또는 세로 여러 줄 동시 예고 후 폭발 (안전 틈 1줄)
             bool row=rng_i(&crng,2)==0;
-            int lines=2+rng_i(&crng,3); // 2-4줄
+            int lines=3+rng_i(&crng,3);
             for (int k=0;k<lines;k++){
                 if (row){ float cy=rng_range(&crng,TILE*2,(G.room.h-2)*TILE); add_zone(V2(0,cy),TILE*1.1f,0.85f,1); }
                 else    { float cx=rng_range(&crng,TILE*2,(G.room.w-2)*TILE); add_zone(V2(cx,0),TILE*1.1f,0.85f,2); }
             }
             sfx_play(SFX_BOSS_ROAR);
-            e->state=0; e->t0=1.4f;
+            e->state=0; e->t0=1.0f;
         } break;
         case 3: // 조준 연사
             if (e->t0<=0){
@@ -836,8 +945,8 @@ static void update_boss(Entity* e,float dt){
                 spawn_bullet(false,7,e->pos,v2scale(d,230.0f),1,2.5f,4,0);
                 sfx_play(SFX_SHOOT);
                 e->t1++;
-                e->t0=0.12f;
-                if (e->t1>=12){ e->state=0; e->t0=1.2f; e->t1=0; }
+                e->t0=0.10f;
+                if (e->t1>=16){ e->state=0; e->t0=0.9f; e->t1=0; }
             }
             break;
         case 4: // 추적 타격: 플레이어와 예측 위치에 위험구역 (3파)
@@ -847,8 +956,8 @@ static void update_boss(Entity* e,float dt){
                 add_zone(v2add(p->pos,V2(rng_range(&crng,-55,55),rng_range(&crng,-55,55))),26.0f,0.85f,0);
                 sfx_play(SFX_BOSS_ROAR);
                 e->t1++;
-                e->t0=0.95f;
-                if (e->t1>=3){ e->state=0; e->t0=1.1f; e->t1=0; }
+                e->t0=0.78f;
+                if (e->t1>=4){ e->state=0; e->t0=0.85f; e->t1=0; }
             }
             break;
         case 5: { // 격자 휩쓸기: 한 줄(열)이 시차로 전진하며 폭발하는 벽
@@ -859,23 +968,33 @@ static void update_boss(Entity* e,float dt){
                 for (int yy=1;yy<G.room.h-1;yy+=3)
                     add_zone(V2(cx,yy*TILE+8.0f),18.0f,0.5f,0);
                 e->t1+=1;
-                e->t0=0.2f;
+                e->t0=0.16f;
                 if (((int)e->t1)%3==0) sfx_play(SFX_HIT);
             }
         } break;
         case 6: // 산개 폭격: 무작위 위험구역 다수 (2파)
             if (e->t0<=0){
-                int n=6+rng_i(&crng,4);
+                int n=8+rng_i(&crng,5);
                 for (int k=0;k<n;k++)
                     add_zone(V2(rng_range(&crng,TILE*2,(G.room.w-2)*TILE),rng_range(&crng,TILE*2,(G.room.h-2)*TILE)),
                              30.0f,0.9f+rng_f(&crng)*0.3f,0);
                 add_zone(p->pos,30.0f,0.9f,0);
                 sfx_play(SFX_BOSS_ROAR);
                 e->t1++;
-                e->t0=1.3f;
-                if (e->t1>=2){ e->state=0; e->t0=1.1f; e->t1=0; }
+                e->t0=1.0f;
+                if (e->t1>=3){ e->state=0; e->t0=0.85f; e->t1=0; }
             }
             break;
+        case 7: {
+            for (int k=0;k<3;k++){
+                float cy=rng_range(&crng,TILE*2,(G.room.h-2)*TILE);
+                float cx=rng_range(&crng,TILE*2,(G.room.w-2)*TILE);
+                add_zone(V2(0,cy),TILE,0.72f,1);
+                add_zone(V2(cx,0),TILE,0.72f,2);
+            }
+            sfx_play(SFX_BOSS_ROAR);
+            e->state=0; e->t0=0.9f;
+        } break;
         }
     } break;
     case E_BOSS_NULL: {
@@ -896,19 +1015,19 @@ static void update_boss(Entity* e,float dt){
             if (e->t0<=0){
                 switch (e->state){
                 case 0: // 역방향 이중 나선
-                    boss_radial(e,4,95.0f, e->t1*2.0f);
-                    boss_radial(e,4,95.0f,-e->t1*2.0f);
-                    e->t2++; e->t0=0.15f;
-                    if (e->t2>=10){ e->state=1; e->t2=0; e->t0=0.5f; }
+                    boss_radial(e,6,105.0f, e->t1*2.0f);
+                    boss_radial(e,6,105.0f,-e->t1*2.0f);
+                    e->t2++; e->t0=0.12f;
+                    if (e->t2>=12){ e->state=1; e->t2=0; e->t0=0.4f; }
                     break;
                 case 1: // 꽃: 속도 다른 이중 링
-                    boss_radial(e,14,72.0f,rng_f(&crng)*6.28f);
-                    boss_radial(e,14,108.0f,0.224f);
+                    boss_radial(e,18,80.0f,rng_f(&crng)*6.28f);
+                    boss_radial(e,18,118.0f,0.224f);
                     e->t2++; e->t0=0.7f;
                     if (e->t2>=3){ e->state=2; e->t2=0; e->t0=0.4f; }
                     break;
                 default: // 조준 산탄 연사
-                    boss_spread(e,dir,5,0.18f,160.0f);
+                    boss_spread(e,dir,7,0.16f,175.0f);
                     e->t2++; e->t0=0.5f;
                     if (e->t2>=3){ e->state=0; e->t2=0; e->t0=0.8f; }
                     break;
@@ -932,11 +1051,11 @@ static void update_boss(Entity* e,float dt){
             default: // 등장 탄막 — 텔레포트마다 교체
                 if (e->t0<=0){
                     int pat=((int)e->t2)%3;
-                    if (pat==0) boss_ring_gap(e,20,110.0f,atan2f(dir.y,dir.x)); // 플레이어 쪽 틈
-                    else if (pat==1){ boss_radial(e,10,90.0f,0.0f); boss_radial(e,10,130.0f,0.314f); } // 이중 링
-                    else boss_spread(e,dir,7,0.16f,170.0f); // 광각 산탄
+                    if (pat==0) boss_ring_gap(e,24,120.0f,atan2f(dir.y,dir.x)); // 플레이어 쪽 틈
+                    else if (pat==1){ boss_radial(e,14,100.0f,0.0f); boss_radial(e,14,140.0f,0.314f); } // 이중 링
+                    else boss_spread(e,dir,9,0.14f,185.0f); // 광각 산탄
                     e->t2++;
-                    e->state=0; e->t0=rng_range(&crng,0.9f,1.3f);
+                    e->state=0; e->t0=rng_range(&crng,0.7f,1.0f);
                 }
                 break;
             }
@@ -945,36 +1064,59 @@ static void update_boss(Entity* e,float dt){
             e->vel=V2(cosf(e->t1*0.9f)*40.0f,sinf(e->t1*1.2f)*30.0f);
             e->pos=v2add(e->pos,v2scale(e->vel,dt));
             if (e->t0<=0){
-                boss_radial(e,3,140.0f,e->t1*3.0f);
-                boss_radial(e,3,140.0f,e->t1*3.0f+3.1416f);
+                boss_radial(e,5,150.0f,e->t1*3.0f);
+                boss_radial(e,5,150.0f,e->t1*3.0f+3.1416f);
                 e->t2++;
-                if (((int)e->t2)%8==0) boss_ring_gap(e,24,90.0f,rng_f(&crng)*6.28f);
-                e->t0=0.1f;
+                if (((int)e->t2)%6==0) boss_ring_gap(e,28,100.0f,rng_f(&crng)*6.28f);
+                e->t0=0.08f;
             }
         }
     } break;
     }
     // 접촉 피해
-    if (v2len(v2sub(p->pos,e->pos)) < e->radius+5.0f) player_take_damage(e->pos);
+    if (v2len(v2sub(p->pos,e->pos)) < e->radius+5.0f) player_take_damage_typed(e->pos,boss_damage(1.0f),e->type);
 }
 
 // 플레이어 탄이 소멸할 때의 무기 유물 효과 (파편 분열 / 충격 폭발)
 static void bullet_death_fx(Bullet* b){
     if (!b->from_player) return;
+    if (b->kind==1 && b->fuse_armed){
+        float explosion_radius=44.0f*(player_has_wrelic(WR_CANNON_RECOIL)?1.4f:1.0f);
+        for (int j=0;j<MAX_ENTITIES;j++){
+            Entity* e=&G.ents[j];
+            if (!e->active||e->type==E_ECHO_GHOST) continue;
+            if (v2len(v2sub(e->pos,b->pos))<explosion_radius)
+                enemy_damage(e,b->dmg*0.85f,b->pos,b->burn,b->slow,b->crit,true,b->attack_group);
+        }
+        burst(b->pos,22,COL(0xFF7A3D),180,0.55f,2.8f,true);
+        G.shake=fmaxf(G.shake,3.5f);
+    }
     if (b->kind==1 && player_has_wrelic(WR_CANNON_FRAG)){ // 포탄 → 6갈래 파편
         for (int k=0;k<6;k++){ float a=k*1.0472f+rng_f(&crng);
-            spawn_bullet(true,0,b->pos,V2(cosf(a)*210.0f,sinf(a)*210.0f),b->dmg*0.5f,0.5f,3.0f,0); }
+            Bullet* frag=spawn_bullet(true,0,b->pos,V2(cosf(a)*210.0f,sinf(a)*210.0f),b->dmg*0.5f,0.5f,3.0f,0);
+            if (frag) frag->attack_group=b->attack_group;
+        }
         burst(b->pos,10,COL(0x7CFCE4),130,0.4f,2.2f,true);
     }
     if (b->kind==4 && player_has_wrelic(WR_LANCE_BLAST)){ // 랜스 멈춘 지점 폭발
         for (int j=0;j<MAX_ENTITIES;j++){
             Entity* e=&G.ents[j];
             if (!e->active||e->type==E_ECHO_GHOST) continue;
-            if (v2len(v2sub(e->pos,b->pos))<32.0f) enemy_damage(e,b->dmg*0.6f,b->pos,b->burn,b->slow,false);
+            if (v2len(v2sub(e->pos,b->pos))<32.0f) enemy_damage(e,b->dmg*0.6f,b->pos,b->burn,b->slow,false,b->from_player,b->attack_group);
         }
         burst(b->pos,16,COL(0xFF7A3D),150,0.5f,2.6f,true);
         G.shake=fmaxf(G.shake,3.0f); sfx_play(SFX_SHOOT);
     }
+}
+
+static bool arm_delayed_fuse(Bullet* b){
+    if (b->kind!=1 || !b->delayed_fuse) return false;
+    b->delayed_fuse=false;
+    b->fuse_armed=true;
+    b->vel=V2(0,0);
+    b->life=0.35f;
+    b->radius*=1.4f;
+    return true;
 }
 
 // ----------------------------------------------------------- bullets
@@ -986,8 +1128,19 @@ static void update_bullets(float dt){
         b->life -= dt;
         if (b->life<=0){
             if (b->kind==3){ b->returning=true; b->life=3.0f; }
+            else if (b->kind==10){
+                if (b->last_hit>=0 && b->last_hit<MAX_ENTITIES){
+                    Entity* target=&G.ents[b->last_hit];
+                    if (target->active && target->type!=E_ECHO_GHOST)
+                        enemy_damage(target,b->dmg,b->pos,b->burn,b->slow,b->crit,true,b->attack_group);
+                }
+                b->active=false;
+                continue;
+            }
+            else if (arm_delayed_fuse(b)) continue;
             else { bullet_death_fx(b); b->active=false; continue; }
         }
+        if (b->kind==10) continue;
         // 유도
         if (b->kind==5 && b->from_player){
             float best=1e9f; Entity* tgt=NULL;
@@ -1011,15 +1164,31 @@ static void update_bullets(float dt){
         if (b->kind==3){
             float d=v2len(v2sub(b->pos,p->pos));
             float outd = (b->from_player && player_has_wrelic(WR_GLAIVE_ORBIT))? 215.0f : 130.0f;
-            if (!b->returning && d>outd) b->returning=true;
+            if (!b->returning && d>outd){
+                b->returning=true;
+                if (b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)) b->dmg*=1.25f;
+            }
             if (b->returning){
-                v2 want=v2scale(v2norm(v2sub(p->pos,b->pos)),weapon_defs[WPN_GLAIVE].speed*1.3f);
+                float return_speed=weapon_defs[WPN_GLAIVE].speed*(b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)?1.625f:1.3f);
+                v2 want=v2scale(v2norm(v2sub(p->pos,b->pos)),return_speed);
                 b->vel=v2add(b->vel,v2scale(v2sub(want,b->vel),8.0f*dt));
                 // glaive_out 해제는 update_play 페일세이프가 담당 (쌍날: 둘 다 복귀해야 재발사)
                 if (d<12.0f){ b->active=false; continue; }
             }
         }
         b->pos = v2add(b->pos,v2scale(b->vel,dt));
+        if (b->kind==3 && b->from_player && player_has_wrelic(WR_GLAIVE_TRAIL)){
+            b->trail_t-=dt;
+            if (b->trail_t<=0){
+                for (int j=0;j<MAX_ENTITIES;j++){
+                    Entity* e=&G.ents[j];
+                    if (!e->active||e->type==E_ECHO_GHOST) continue;
+                    if (v2len(v2sub(e->pos,b->pos))<18.0f)
+                        enemy_damage(e,b->dmg*0.3f,b->pos,b->burn,b->slow,false,true,b->attack_group);
+                }
+                b->trail_t=0.18f;
+            }
+        }
         // 벽
         if (b->kind!=3 && tile_solid((int)(b->pos.x/TILE),(int)(b->pos.y/TILE))){
             if (b->kind==2 && b->from_player && b->bounces>0){ // 도탄: 막힌 축만 반사
@@ -1033,10 +1202,14 @@ static void update_bullets(float dt){
                 burst(b->pos,2,COL(0x7CFCE4),50,0.2f,1.2f,true);
                 continue;
             }
+            if (arm_delayed_fuse(b)) continue;
             burst(b->pos,4,b->from_player?COL(0x7CFCE4):COL(0xFF3D7F),60,0.25f,1.5f,true);
             bullet_death_fx(b); b->active=false; continue;
         }
-        if (b->pos.x<0||b->pos.y<0||b->pos.x>G.room.w*TILE||b->pos.y>G.room.h*TILE){ bullet_death_fx(b); b->active=false; continue; }
+        if (b->pos.x<0||b->pos.y<0||b->pos.x>G.room.w*TILE||b->pos.y>G.room.h*TILE){
+            if (arm_delayed_fuse(b)) continue;
+            bullet_death_fx(b); b->active=false; continue;
+        }
         // 명중
         if (b->from_player){
             if (b->rehit_t>0) b->rehit_t-=dt;
@@ -1046,7 +1219,25 @@ static void update_bullets(float dt){
                 if (j==b->last_hit && b->rehit_t>0) continue;
                 float rr=e->radius+b->radius;
                 if (v2len(v2sub(e->pos,b->pos))<rr){
-                    enemy_damage(e,b->dmg,b->pos,b->burn,b->slow,b->crit);
+                    enemy_damage(e,b->dmg,b->pos,b->burn,b->slow,b->crit,b->from_player,b->attack_group);
+                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIN) &&
+                        e->type<E_BOSS_ROT){ e->root=fmaxf(e->root,1.2f); e->vel=V2(0,0); }
+                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIERCE) && b->bounces>0){
+                        b->dmg*=1.2f;
+                        b->bounces--;
+                    }
+                    if (b->kind==5 && player_has_wrelic(WR_WAND_RING)){
+                        for (int k=0;k<MAX_ENTITIES;k++){
+                            Entity* other=&G.ents[k];
+                            if (!other->active||other==e||other->type==E_ECHO_GHOST) continue;
+                            if (v2len(v2sub(other->pos,b->pos))<30.0f)
+                                enemy_damage(other,b->dmg*0.4f,b->pos,b->burn,b->slow,false,true,b->attack_group);
+                        }
+                    }
+                    if (b->kind==5 && player_has_wrelic(WR_WAND_DELAY)){
+                        Bullet* echo=spawn_bullet(true,10,e->pos,V2(0,0),b->dmg*0.6f,0.35f,0.0f,0);
+                        if (echo){ echo->last_hit=j; echo->attack_group=b->attack_group; echo->burn=b->burn; echo->slow=b->slow; echo->crit=b->crit; }
+                    }
                     // 연쇄 메아리: 유도탄 명중 시 가까운 다른 적에게 작은 연쇄탄
                     if (b->kind==5 && player_has_wrelic(WR_WAND_CHAIN)){
                         float best=130.0f*130.0f; int t=-1;
@@ -1058,10 +1249,12 @@ static void update_bullets(float dt){
                         }
                         if (t>=0){
                             v2 cd=v2norm(v2sub(G.ents[t].pos,b->pos));
-                            spawn_bullet(true,0,b->pos,v2scale(cd,260.0f),b->dmg*0.6f,0.6f,3.0f,0);
+                            Bullet* chain=spawn_bullet(true,0,b->pos,v2scale(cd,260.0f),b->dmg*0.6f,0.6f,3.0f,0);
+                            if (chain) chain->attack_group=b->attack_group;
                         }
                     }
                     b->last_hit=j; b->rehit_t=0.5f;
+                    if (arm_delayed_fuse(b)) break;
                     if (b->pierce>0){ b->pierce--; }
                     else { bullet_death_fx(b); b->active=false; }
                     break;
@@ -1069,7 +1262,7 @@ static void update_bullets(float dt){
             }
         } else {
             if (v2len(v2sub(p->pos,b->pos))<b->radius+5.0f){
-                player_take_damage(b->pos);
+                player_take_damage_amount(b->pos,b->kind==7?boss_damage(b->dmg):b->dmg*0.5f);
                 b->active=false;
             }
         }
@@ -1077,6 +1270,70 @@ static void update_bullets(float dt){
 }
 
 // ----------------------------------------------------------- pickups
+static int player_relic_count(void){
+    int count=0;
+    for (int i=0;i<RELIC_COUNT;i++) if (G.pl.relics[i]) count++;
+    return count;
+}
+
+static void set_regular_relic(int relic,bool held){
+    Player* p=&G.pl;
+    if (p->relics[relic]==held) return;
+    p->relics[relic]=held;
+    if (relic==RELIC_OVERCLOCK){
+        p->maxhp+=held?-1:1;
+        if (p->hp>p->maxhp) p->hp=(float)p->maxhp;
+    }
+}
+
+static void begin_relic_swap(Pickup* pk){
+    int count=0;
+    G.relic_swap_type=pk->type;
+    G.relic_swap_id=pk->relic;
+    G.relic_swap_pickup=(int)(pk-G.pickups);
+    G.relic_swap_sel=0;
+    if (pk->type==PK_WRELIC){
+        for (int i=0;i<2;i++) G.relic_swap_slots[count++]=i;
+    } else {
+        for (int i=0;i<RELIC_COUNT;i++)
+            if (G.pl.relics[i]) G.relic_swap_slots[count++]=i;
+    }
+    G.state=ST_RELIC_SWAP;
+    G.state_t=0;
+    sfx_play(SFX_UI);
+}
+
+void player_confirm_relic_swap(int slot){
+    if (G.relic_swap_pickup<0||G.relic_swap_pickup>=MAX_PICKUPS){ G.state=ST_PLAY; return; }
+    Pickup* pk=&G.pickups[G.relic_swap_pickup];
+    if (!pk->active||pk->type!=G.relic_swap_type||pk->relic!=G.relic_swap_id){ G.state=ST_PLAY; return; }
+    if (slot<0){
+        pk->active=false;
+        set_msg("현재 유물을 유지했다");
+        G.state=ST_PLAY;
+        sfx_play(SFX_UI);
+        return;
+    }
+    int count=G.relic_swap_type==PK_WRELIC?2:4;
+    if (slot>=count){ G.state=ST_PLAY; return; }
+    if (G.relic_swap_type==PK_WRELIC){
+        int old_slot=G.relic_swap_slots[slot];
+        G.pl.wrelics[old_slot]=pk->relic;
+        for (int i=0;i<MAX_PICKUPS;i++)
+            if (G.pickups[i].active&&G.pickups[i].type==PK_WRELIC) G.pickups[i].active=false;
+    } else {
+        set_regular_relic(G.relic_swap_slots[slot],false);
+        set_regular_relic(pk->relic,true);
+        pk->active=false;
+    }
+    char buf[96];
+    const char* name=G.relic_swap_type==PK_WRELIC?weapon_relic_defs[pk->relic].name:relic_defs[pk->relic].name;
+    snprintf(buf,sizeof(buf),"%s 교체 완료",name);
+    set_msg(buf);
+    G.state=ST_PLAY;
+    sfx_play(SFX_PICKUP);
+}
+
 bool player_try_pickup(Pickup* pk){
     Player* p=&G.pl;
     switch (pk->type){
@@ -1142,15 +1399,9 @@ bool player_try_pickup(Pickup* pk){
     }
     case PK_RELIC: {
         if (p->relics[pk->relic]) { return false; }
+        if (player_relic_count()>=4){ begin_relic_swap(pk); return true; }
         StatSnap before=stat_capture();
-        p->relics[pk->relic]=true;
-        if (player_used_kb()>player_capacity_kb()){
-            p->relics[pk->relic]=false;
-            set_msg("용량 초과 — 유물을 들 수 없다");
-            sfx_play(SFX_DENY);
-            return false;
-        }
-        if (pk->relic==RELIC_OVERCLOCK){ p->maxhp--; if(p->hp>p->maxhp)p->hp=(float)p->maxhp; }
+        set_regular_relic(pk->relic,true);
         sfx_play(SFX_PICKUP);
         char buf[96];
         snprintf(buf,sizeof(buf),"%s — %s",relic_defs[pk->relic].name,relic_defs[pk->relic].desc);
@@ -1163,15 +1414,9 @@ bool player_try_pickup(Pickup* pk){
         int wr=pk->relic;
         if (player_has_wrelic(wr)){ set_msg("이미 보유한 무기 유물"); sfx_play(SFX_DENY); return false; }
         int slot = p->wrelics[0]<0?0:(p->wrelics[1]<0?1:-1);
-        if (slot<0){ set_msg("무기 유물은 최대 2개까지 보유"); sfx_play(SFX_DENY); return false; }
+        if (slot<0){ begin_relic_swap(pk); return true; }
         StatSnap before=stat_capture();
         p->wrelics[slot]=wr;
-        if (player_used_kb()>player_capacity_kb()){
-            p->wrelics[slot]=-1;
-            set_msg("용량 초과 — 무기 유물을 들 수 없다");
-            sfx_play(SFX_DENY);
-            return false;
-        }
         sfx_play(SFX_PICKUP);
         char buf[96];
         snprintf(buf,sizeof(buf),"%s — %s",weapon_relic_defs[wr].name,weapon_relic_defs[wr].desc);
@@ -1192,7 +1437,11 @@ void player_drop_shard(void){
     if (p->shards>0){
         StatSnap before=stat_capture();
         p->shards--;
-        spawn_pickup(PK_SHARD,v2add(p->pos,V2(0,14)),(Weapon){0,0},0,0);
+        for (int i=0;i<MAX_PICKUPS;i++) if (!G.pickups[i].active){
+            spawn_pickup(PK_SHARD,v2add(p->pos,V2(0,14)),(Weapon){0,0},0,0);
+            G.pickups[i].manual_only=true;
+            break;
+        }
         sfx_play(SFX_DROP);
         set_msg("추억 조각을 내려놓았다... 가벼워졌다.");
         stat_floats(before);
@@ -1217,6 +1466,9 @@ void player_drop_shard(void){
 // ----------------------------------------------------------- main update
 void update_play(float dt){
     Player* p=&G.pl;
+    for (int i=0;i<MAX_ENTITIES;i++) if (G.enemy_feedback[i].t>0) G.enemy_feedback[i].t-=dt;
+    clear_reward_label_obstacles();
+    player_sync_light_shield();
     G.run_time += dt;
     G.room_t += dt;
 
@@ -1243,12 +1495,22 @@ void update_play(float dt){
     p->pos = resolve_collision(p->pos,p->vel,5.0f,dt);
 
     // --- 조준
-    if (mouse_present){
+    bool keyboard_attack=key_held[SAPP_KEYCODE_SPACE];
+    if (mouse_present && !keyboard_attack){
         v2 world_mouse = v2add(mouse_virt, G.cam);
         p->aim=v2norm(v2sub(world_mouse,p->pos));
         if (p->aim.x==0&&p->aim.y==0) p->aim=V2(1,0);
-    } else if (p->moving){
-        p->aim=mv;
+    } else {
+        Entity* target=NULL;
+        float nearest=1e9f;
+        for (int i=0;i<MAX_ENTITIES;i++){
+            Entity* e=&G.ents[i];
+            if (!e->active || e->type==E_ECHO_GHOST) continue;
+            float d=v2len(v2sub(e->pos,p->pos));
+            if (d<nearest){ nearest=d; target=e; }
+        }
+        if (target) p->aim=v2norm(v2sub(target->pos,p->pos));
+        else if (p->moving) p->aim=mv;
     }
 
     // --- 공격
@@ -1269,7 +1531,7 @@ void update_play(float dt){
         p->heal_timer+=dt;
         if (p->heal_timer>45.0f && p->hp<p->maxhp){
             p->heal_timer=0;
-            p->hp+=1.0f;
+            p->hp=fminf((float)p->maxhp,p->hp+0.5f);
             sfx_play(SFX_HEAL);
             burst(p->pos,8,COL(0x9FFFF0),70,0.5f,2,true);
         }
@@ -1310,6 +1572,7 @@ void update_play(float dt){
                     }
         }
         if (e->flash>0) e->flash-=dt;
+        if (e->player_damage_t>0) e->player_damage_t-=dt;
         if (e->type>=E_BOSS_ROT && e->type<=E_BOSS_NULL){ any_enemy=true; update_boss(e,dt); }
         else {
             if (e->type!=E_ECHO_GHOST) any_enemy=true;
@@ -1345,7 +1608,9 @@ void update_play(float dt){
         if (!pk->active) continue;
         pk->bob+=dt*3.0f;
         float d=v2len(v2sub(pk->pos,p->pos));
-        if (pk->type==PK_BYTE){
+        bool auto_collect=pk->type==PK_BYTE || pk->type==PK_HEART ||
+                          (pk->type==PK_SHARD && !pk->manual_only);
+        if (auto_collect){
             if (d<46.0f) pk->pos=v2add(pk->pos,v2scale(v2norm(v2sub(p->pos,pk->pos)),160.0f*dt));
             if (d<10.0f) player_try_pickup(pk);
         }

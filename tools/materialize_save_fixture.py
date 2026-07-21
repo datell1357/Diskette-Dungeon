@@ -32,6 +32,42 @@ FIXTURE_WORDS = {
         0x00000002, 0x00000003, 0x00000004, 0x00000005,
         0x1A193D87,
     ),
+    "valid-v3-00": (
+        0xD15C0DE7, 0x00000003, 0x00000315, 0x0000003F,
+        0x00000003, 0x0000000F, 0x00000005, 0x00000001,
+        0x00000001, 0x00000000, 0x00010932, 0x00000001,
+        0x00000002, 0x00000003, 0x00000004, 0x00000005,
+        0x00000000, 0x00000000, 0x00000000,
+    ),
+    "valid-v3-01": (
+        0xD15C0DE7, 0x00000003, 0x00000315, 0x0000003F,
+        0x00000003, 0x0000000F, 0x00000005, 0x00000001,
+        0x00000001, 0x00000000, 0x00010932, 0x00000001,
+        0x00000002, 0x00000003, 0x00000004, 0x00000005,
+        0x00000000, 0x00000001, 0x00000000,
+    ),
+    "valid-v3-10": (
+        0xD15C0DE7, 0x00000003, 0x00000315, 0x0000003F,
+        0x00000003, 0x0000000F, 0x00000005, 0x00000001,
+        0x00000001, 0x00000000, 0x00010932, 0x00000001,
+        0x00000002, 0x00000003, 0x00000004, 0x00000005,
+        0x00000001, 0x00000000, 0x00000000,
+    ),
+    "valid-v3-11": (
+        0xD15C0DE7, 0x00000003, 0x00000315, 0x0000003F,
+        0x00000003, 0x0000000F, 0x00000005, 0x00000001,
+        0x00000001, 0x00000000, 0x00010932, 0x00000001,
+        0x00000002, 0x00000003, 0x00000004, 0x00000005,
+        0x00000001, 0x00000001, 0x00000000,
+    ),
+    "valid-v4-10": (
+        0xD15C0DE7, 0x00000004, 0x000003E7, 0x0000003F,
+        0x00000003, 0x00000012, 0x00000006, 0x00000001,
+        0x00000001, 0x00000000, 0x000181CD, 0x00000001,
+        0x00000002, 0x00000003, 0x00000004, 0x00000005,
+        0x00000001, 0x00000000, 0x00000001, 0x00000000,
+        0x00000000,
+    ),
 }
 
 
@@ -44,7 +80,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--case",
-        choices=("valid-v1", "valid-v2", "bad-v1-checksum", "bad-v2-checksum"),
+        choices=(
+            "valid-v1", "valid-v2", "valid-v3-00", "valid-v3-01", "valid-v3-10", "valid-v3-11", "valid-v4-10",
+            "bad-v1-checksum", "bad-v2-checksum", "bad-v3-checksum", "bad-v4-checksum",
+            "bad-v1-length", "bad-v2-length", "bad-v3-length", "bad-v4-length",
+        ),
         required=True,
     )
     parser.add_argument("--root", required=True)
@@ -104,14 +144,23 @@ def prepare_root(root: Path) -> None:
 
 
 def fixture_bytes(case: str) -> bytes:
-    base_case = "valid-v1" if case.endswith("v1-checksum") else (
-        "valid-v2" if case.endswith("v2-checksum") else case
-    )
-    words = FIXTURE_WORDS[base_case]
+    if case.startswith("bad-v3-"):
+        base_case = "valid-v3-00"
+    elif case.startswith("bad-v4-"):
+        base_case = "valid-v4-10"
+    else:
+        base_case = case.replace("bad-", "valid-").replace("-checksum", "").replace("-length", "")
+    words = list(FIXTURE_WORDS[base_case])
+    checksum = 0x1D15C0DE
+    for word in words[:-1]:
+        checksum = (checksum * 31 + word) & 0xFFFFFFFF
+    words[-1] = checksum
     data = bytearray(struct.pack("<%dI" % len(words), *words))
-    if case.startswith("bad-"):
+    if case.endswith("-checksum"):
         # Corrupt one checksum byte and nothing else.
         data[-1] ^= 0x01
+    if case.endswith("-length"):
+        data.extend(struct.pack("<I", 0))
     return bytes(data)
 
 

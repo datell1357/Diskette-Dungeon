@@ -15,14 +15,13 @@ enum { WPN_SWORD=0, WPN_CANNON, WPN_SPRAY, WPN_GLAIVE, WPN_LANCE, WPN_WAND, WPN_
 enum { PFX_NONE=0, PFX_HOT, PFX_COLD, PFX_BROKEN, PFX_COMPRESSED, PFX_COUNT };
 enum { RELIC_CHECKSUM=0, RELIC_DEFRAG, RELIC_OVERCLOCK, RELIC_BACKUP, RELIC_LUMINANCE, RELIC_COMPRESS, RELIC_BADSECTOR, RELIC_COUNT };
 
-// 무기 유물 — 무기별 2개씩. 인덱스 규칙: wr/2 == 무기 종류, wr%2 == 슬롯.
 enum {
-    WR_SWORD_WAVE=0, WR_SWORD_WHIRL,
-    WR_CANNON_FRAG,  WR_CANNON_RAIL,
-    WR_SPRAY_RICO,   WR_SPRAY_WIDE,
-    WR_GLAIVE_TWIN,  WR_GLAIVE_ORBIT,
-    WR_LANCE_BLAST,  WR_LANCE_CHARGE,
-    WR_WAND_FORK,    WR_WAND_CHAIN,
+    WR_SWORD_WAVE=0, WR_SWORD_WHIRL, WR_SWORD_PHASE, WR_SWORD_EXECUTE,
+    WR_CANNON_FRAG,  WR_CANNON_RAIL, WR_CANNON_FUSE, WR_CANNON_RECOIL,
+    WR_SPRAY_RICO,   WR_SPRAY_WIDE, WR_SPRAY_PIERCE, WR_SPRAY_CHOKE,
+    WR_GLAIVE_TWIN,  WR_GLAIVE_ORBIT, WR_GLAIVE_RETURN, WR_GLAIVE_TRAIL,
+    WR_LANCE_BLAST,  WR_LANCE_CHARGE, WR_LANCE_PIN, WR_LANCE_PIERCE,
+    WR_WAND_FORK,    WR_WAND_CHAIN, WR_WAND_RING, WR_WAND_DELAY,
     WR_COUNT
 };
 
@@ -45,7 +44,9 @@ typedef struct {
     float t0, t1, t2, t3;  // ai timers
     int state, phase;
     float flash;           // 피격 플래시
-    float burn, slow;      // 디버프 남은 시간
+    float burn, slow, root;      // 디버프 남은 시간
+    float player_damage, player_damage_t;
+    bool player_damaged, player_damage_crit;
     bool facing_left;
     bool elite;            // 정예 변종
     uint8_t event_trait;
@@ -63,10 +64,12 @@ typedef struct {
     int pierce;
     int bounces;           // 남은 벽 반사 횟수 (스프레이 도탄 유물)
     int last_hit;          // 같은 적 연속 타격 방지
-    float rehit_t;
+    float rehit_t, trail_t;
     bool returning;        // glaive
+    bool delayed_fuse, fuse_armed;
     float burn, slow;      // 부여 디버프
     bool crit;
+    uint32_t attack_group;
 } Bullet;
 
 typedef struct {
@@ -85,6 +88,7 @@ typedef struct {
     int core_id;           // PK_CORE 0..3
     v2 pos;
     float bob;
+    bool manual_only;
 } Pickup;
 
 // 범위지정 공격 — 바닥에 예고된 원형 위험구역 (DEFRAG 등)
@@ -99,6 +103,11 @@ typedef struct {
 } AoeZone;
 
 typedef struct { float x,y; char text[48]; float t; col3 c; } Floater;
+typedef struct {
+    v2 pos;
+    float t, hp, damage, radius;
+    bool crit, elite;
+} EnemyFeedback;
 
 // ----------------------------------------------------------- run state
 // ----------------------------------------------------------- memory events
@@ -121,8 +130,11 @@ typedef struct {
 typedef struct {
     v2 pos, vel;
     float hp; int maxhp;
+    int shield_maxhp;
+    float shield, light_shield_cap;
     Weapon weapon;
     float attack_cd, charge;   // charge: 캐논
+    uint32_t attack_group, impact_group;
     bool charging;
     float dash_t, dash_cd, iframes;
     v2 dash_dir;
@@ -160,8 +172,9 @@ typedef struct {
     bool is_boss;
 } Room;
 
-enum { ST_BOOT=0, ST_INTRO, ST_TITLE, ST_PLAY, ST_FLASHBACK, ST_INVENTORY,
-       ST_PAUSE, ST_DEAD, ST_ENDING, ST_EPILOGUE, ST_UPGRADE };
+enum { ST_BOOT=0, ST_INTRO, ST_TITLE, ST_OPTIONS, ST_PLAY, ST_FLASHBACK, ST_INVENTORY,
+       ST_RELIC_SWAP, ST_PAUSE, ST_DEAD, ST_ENDING, ST_EPILOGUE, ST_UPGRADE, ST_CODEX, ST_CODEX_DETAIL,
+       ST_WEAPON_SELECT, ST_DIFFICULTY_SELECT };
 
 typedef struct {
     uint32_t magic, version;
@@ -172,10 +185,13 @@ typedef struct {
     uint32_t opt_scanline, opt_shake;
     uint32_t last_seed;
     uint32_t upg[5];           // 영구 강화: 무결성/공격/이속/빛/대시
+    uint32_t intro_seen;
+    uint32_t intro_replay_queued;
+    uint32_t opt_bgm, opt_sfx;
     uint32_t checksum;
 } MetaSave;
-typedef char MetaSave_size_must_be_68[(sizeof(MetaSave)==68)?1:-1];
-typedef char MetaSave_checksum_offset_must_be_64[(offsetof(MetaSave,checksum)==64)?1:-1];
+typedef char MetaSave_size_must_be_84[(sizeof(MetaSave)==84)?1:-1];
+typedef char MetaSave_checksum_offset_must_be_80[(offsetof(MetaSave,checksum)==80)?1:-1];
 
 typedef struct {
     MemoryRunState memory;
@@ -191,6 +207,7 @@ typedef struct {
     Particle parts[MAX_PARTICLES];
     Pickup pickups[MAX_PICKUPS];
     Floater floaters[MAX_FLOATERS];
+    EnemyFeedback enemy_feedback[MAX_ENTITIES];
     // 플레이어 위치 히스토리 (망령/추격자/메아리)
     v2 history[256]; int hist_head;
     // juice
@@ -200,6 +217,7 @@ typedef struct {
     float time;                // 누적 시간 (셰이더)
     float run_time;
     int bytes_run;             // 이번 런에서 모은 바이트
+    int death_source_type;
     float ambient_mul;         // 보스 연출용
     float light_mul;           // NULL 보스 빛 흡수
     // 전환
@@ -214,6 +232,8 @@ typedef struct {
     int ending;                // 0 빈손 1 표준 2 트루
     // 타이틀 메뉴
     int menu_sel; int title_weapon; uint32_t title_seed; bool seed_edit;
+    int options_return_state;
+    int codex_section, codex_page, codex_detail, codex_focus;
     int intro_page;
     // 사망 통계
     float dead_t;
@@ -222,6 +242,8 @@ typedef struct {
     int kills;
     float room_t;              // 현재 방 체류 시간 (남은 적 표시용)
     int upg_sel;
+    int relic_swap_type, relic_swap_id, relic_swap_pickup, relic_swap_sel;
+    int relic_swap_slots[4];
     bool run_settled;
     AoeZone zones[MAX_ZONES];  // 범위지정 공격 예고
 } Game;
@@ -246,6 +268,7 @@ void meta_load(void);
 int portal_list(v2* out, int* exit_flag, int max);
 void start_run(void);
 void start_run_with_seed(uint32_t seed);
+void start_run_after_intro(void);
 enum { SETTLE_DEATH=0, SETTLE_FORFEIT };
 bool settle_run_once(int reason);
 #ifdef DD_DEBUG
@@ -255,6 +278,8 @@ int dd_debug_meta_save_events(void);
 void spawn_particle(v2 pos, v2 vel, float life, float size, col3 c, bool glow, float drag, float grav);
 void burst(v2 pos, int n, col3 c, float speed, float life, float size, bool glow);
 void spawn_pickup(int type, v2 pos, Weapon w, int relic, int core_id);
+v2 reward_label_pos(const Pickup* pickup);
+void clear_reward_label_obstacles(void);
 void add_floater(v2 pos, const char* text, col3 c);
 void set_msg(const char* m);
 void open_doors(void);
@@ -266,8 +291,13 @@ int player_capacity_kb(void);
 float weight_frac(void);
 float capacity_frac(void);
 float player_light_radius(void);
+float player_light_shield_limit(void);
+void player_sync_light_shield(void);
+void player_restore_light_shield(void);
 float player_speed_mul(void);
+float player_attack_damage(void);
 void player_take_damage(v2 from);
+void player_take_damage_amount(v2 from, float damage);
 void fade_to(int next_state, col3 c);
 #ifdef DD_DEBUG
 void dd_debug_clear_room_enemies(void);
@@ -279,6 +309,7 @@ void spawn_boss(int biome);
 void update_play(float dt);
 void player_drop_shard(void);
 bool player_try_pickup(Pickup* p);
+void player_confirm_relic_swap(int slot);
 
 // ui_story.c
 void draw_play(void);

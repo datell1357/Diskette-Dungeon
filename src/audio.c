@@ -6,6 +6,7 @@
 
 typedef struct {
     bool on;
+    bool music;
     int wave;          // 0 pulse, 1 tri, 2 noise, 3 sine
     float t;           // phase
     float freq, freq_slide, freq_lim;
@@ -28,6 +29,9 @@ typedef struct {
     int echo_pos;
     float mvol;
     int pending_track;
+    volatile int bgm_enabled;
+    volatile int sfx_enabled;
+    bool creating_music;
 } AudioState;
 static AudioState A;
 
@@ -41,6 +45,8 @@ void sfx_play(SfxId id){
     sfx_qw=w+1;
 }
 void music_set(int track){ A.pending_track = track; }
+void audio_set_bgm_enabled(bool enabled){ A.bgm_enabled=enabled?1:0; }
+void audio_set_sfx_enabled(bool enabled){ A.sfx_enabled=enabled?1:0; }
 
 static float voice_sample(Voice* v){
     if (!v->on) return 0.0f;
@@ -80,6 +86,7 @@ static void start_voice(int wave,float freq,float slide,float lim,float vol,floa
     Voice* v=alloc_voice();
     memset(v,0,sizeof(*v));
     v->on=true; v->wave=wave; v->freq=freq; v->freq_slide=slide; v->freq_lim=lim>0?lim:(slide<0?20.0f:20000.0f);
+    v->music=A.creating_music;
     v->vol=vol; v->decay = decay_s>0? powf(0.001f,1.0f/(decay_s*SR)) : 1.0f;
     v->dur=dur; v->duty=duty>0?duty:0.5f;
     v->vib_amt=vib_a; v->vib_spd=vib_s;
@@ -142,6 +149,7 @@ static void music_step(void){
     int third = root + (td->minor[chord]?3:4);
     int fifth = root + 7;
     int st = A.step;
+    A.creating_music=true;
     // bass: 8분 루트 (옥타브2)
     if ((st&1)==0){
         start_voice(1,note_hz(root+12),0,0,0.20f,0.16f,0.18f,0,0,0);
@@ -167,6 +175,7 @@ static void music_step(void){
         start_voice(2,8000,-4000,2000,0.05f,0.04f,0.05f,0,0,0);
     if (td->density>=4 && (st&7)==4)
         start_voice(2,300,-600,80,0.18f,0.12f,0.13f,0,0,0); // kick-ish
+    A.creating_music=false;
 }
 
 // ----------------------------------------------------------------- stream
@@ -187,8 +196,12 @@ static void stream_cb(float* buffer,int num_frames,int num_channels){
                 music_step();
             }
         }
-        float s=0;
-        for (int vi=0;vi<MAX_VOICES;vi++) s+=voice_sample(&A.v[vi]);
+        float music=0, sfx=0;
+        for (int vi=0;vi<MAX_VOICES;vi++){
+            float sample=voice_sample(&A.v[vi]);
+            if (A.v[vi].music) music+=sample; else sfx+=sample;
+        }
+        float s=(A.bgm_enabled?music:0)+(A.sfx_enabled?sfx:0);
         // soft clip + echo
         float e = A.echo[A.echo_pos];
         float out = tanhf(s + e*0.35f);
@@ -237,6 +250,7 @@ void audio_debug_dump(const char* path){
 void audio_init(void){
     memset(&A,0,sizeof(A));
     A.track=-1; A.pending_track=-1; A.mvol=0.85f;
+    A.bgm_enabled=1; A.sfx_enabled=1;
     A.rng.s=0x9E3779B97F4A7C15ull;
     saudio_setup(&(saudio_desc){
         .sample_rate=SR,.num_channels=2,.stream_cb=stream_cb,.logger.func=slog_func });

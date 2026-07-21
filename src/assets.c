@@ -6,6 +6,7 @@
 static uint32_t atlas_px[ATLAS*ATLAS];
 float spr_uv[SPR_COUNT][4];
 sg_view atlas_view;
+static int spr_rect[SPR_COUNT][4];
 
 static inline uint32_t PACK(uint8_t r,uint8_t g,uint8_t b,uint8_t a){
     return ((uint32_t)a<<24)|((uint32_t)b<<16)|((uint32_t)g<<8)|r;
@@ -55,6 +56,8 @@ static void begin_sprite(int id,int w,int h){
     if (pen_x + w + 2 > ATLAS){ pen_x = 0; pen_y += row_h + 2; row_h = 0; }
     if (h > row_h) row_h = h;
     cur_x = pen_x+1; cur_y = pen_y+1; cur_w = w; cur_h = h;
+    spr_rect[id][0]=cur_x; spr_rect[id][1]=cur_y;
+    spr_rect[id][2]=w; spr_rect[id][3]=h;
     pen_x += w + 2;
     spr_uv[id][0]=(cur_x)/(float)ATLAS;     spr_uv[id][1]=(cur_y)/(float)ATLAS;
     spr_uv[id][2]=(cur_x+w)/(float)ATLAS;   spr_uv[id][3]=(cur_y+h)/(float)ATLAS;
@@ -413,4 +416,19 @@ void assets_init(void){
         .width=ATLAS,.height=ATLAS,.pixel_format=SG_PIXELFORMAT_RGBA8,
         .data.mip_levels[0]=SG_RANGE(atlas_px),.label="atlas"});
     atlas_view = sg_make_view(&(sg_view_desc){ .texture.image=img });
+
+}
+
+void draw_codex_sprite(int id,float x,float y,float w,float h,col3 tint,float a){
+    int sx=spr_rect[id][0], sy=spr_rect[id][1];
+    int sw=spr_rect[id][2], sh=spr_rect[id][3];
+    float pw=w/sw, ph=h/sh;
+    for (int py=0;py<sh;py++) for (int px=0;px<sw;px++){
+        uint32_t pixel=atlas_px[(sy+py)*ATLAS+sx+px];
+        int pr=pixel&255, pg=(pixel>>8)&255, pb=(pixel>>16)&255;
+        float pa=((pixel>>24)&255)/255.0f;
+        if (pa<=0 || (pr<=20 && pg<=16 && pb<=28)) continue;
+        col3 c={(pr/255.0f)*tint.r,(pg/255.0f)*tint.g,(pb/255.0f)*tint.b};
+        draw_quad(x-w*0.5f+px*pw,y-h*0.5f+py*ph,pw,ph,c,a*pa);
+    }
 }

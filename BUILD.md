@@ -78,10 +78,26 @@ python3.12 tools/materialize_save_fixture.py --case valid-v1 --root build/eviden
 HOME="$PWD/build/evidence/mac-first/save/valid-v1/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v1/home" --action fixture-save-roundtrip --expect v1
 python3.12 tools/materialize_save_fixture.py --case valid-v2 --root build/evidence/mac-first/save/valid-v2
 HOME="$PWD/build/evidence/mac-first/save/valid-v2/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v2/home" --action fixture-save-roundtrip --expect v2
-python3.12 tools/materialize_save_fixture.py --case bad-v1-checksum --root build/evidence/mac-first/save/bad-v1
-HOME="$PWD/build/evidence/mac-first/save/bad-v1/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1/home" --action fixture-save-reject --expect v1
-python3.12 tools/materialize_save_fixture.py --case bad-v2-checksum --root build/evidence/mac-first/save/bad-v2
-HOME="$PWD/build/evidence/mac-first/save/bad-v2/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2/home" --action fixture-save-reject --expect v2
+python3.12 tools/materialize_save_fixture.py --case valid-v3-00 --root build/evidence/mac-first/save/valid-v3-00
+HOME="$PWD/build/evidence/mac-first/save/valid-v3-00/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v3-00/home" --action fixture-save-roundtrip --expect v3
+python3.12 tools/materialize_save_fixture.py --case valid-v3-01 --root build/evidence/mac-first/save/valid-v3-01
+HOME="$PWD/build/evidence/mac-first/save/valid-v3-01/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v3-01/home" --action fixture-save-roundtrip --expect v3
+python3.12 tools/materialize_save_fixture.py --case valid-v3-10 --root build/evidence/mac-first/save/valid-v3-10
+HOME="$PWD/build/evidence/mac-first/save/valid-v3-10/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v3-10/home" --action fixture-save-roundtrip --expect v3
+python3.12 tools/materialize_save_fixture.py --case valid-v3-11 --root build/evidence/mac-first/save/valid-v3-11
+HOME="$PWD/build/evidence/mac-first/save/valid-v3-11/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v3-11/home" --action fixture-save-roundtrip --expect v3
+python3.12 tools/materialize_save_fixture.py --case bad-v1-checksum --root build/evidence/mac-first/save/bad-v1-checksum
+HOME="$PWD/build/evidence/mac-first/save/bad-v1-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1-checksum/home" --action fixture-save-reject --expect v1
+python3.12 tools/materialize_save_fixture.py --case bad-v2-checksum --root build/evidence/mac-first/save/bad-v2-checksum
+HOME="$PWD/build/evidence/mac-first/save/bad-v2-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2-checksum/home" --action fixture-save-reject --expect v2
+python3.12 tools/materialize_save_fixture.py --case bad-v3-checksum --root build/evidence/mac-first/save/bad-v3-checksum
+HOME="$PWD/build/evidence/mac-first/save/bad-v3-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v3-checksum/home" --action fixture-save-reject --expect v3
+python3.12 tools/materialize_save_fixture.py --case bad-v1-length --root build/evidence/mac-first/save/bad-v1-length
+HOME="$PWD/build/evidence/mac-first/save/bad-v1-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1-length/home" --action fixture-save-reject --expect v1
+python3.12 tools/materialize_save_fixture.py --case bad-v2-length --root build/evidence/mac-first/save/bad-v2-length
+HOME="$PWD/build/evidence/mac-first/save/bad-v2-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2-length/home" --action fixture-save-reject --expect v2
+python3.12 tools/materialize_save_fixture.py --case bad-v3-length --root build/evidence/mac-first/save/bad-v3-length
+HOME="$PWD/build/evidence/mac-first/save/bad-v3-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v3-length/home" --action fixture-save-reject --expect v3
 
 # Finite modifier, Haste clock, and ending/coda matrices; each exits 0.
 build/DisketteDungeon_diag_mac --clean-profile --seed 12345 --difficulty 1 --weapon 0 --ngplus 0 --action fixture-modifiers
@@ -100,9 +116,13 @@ same-decision resolver re-entry returning false with zero deltas, one
 is pre-clamp monotonic data: the analyzer requires at least 10440 measured
 frames, 179000..181000 ms elapsed, p95 <=18.000 ms, worst <=33.334 ms, and
 maximum contiguous rolling FPS<58 <=1000 ms. Save fixtures require the exact
-68-byte/64-offset layout, valid V1/V2 production load-save-reload, one-byte
-checksum rejection to defaults without rewrite, exact marker ownership/content,
-and no real-profile mutation.
+V1=48-byte/12-word, V2=68-byte/17-word, and V3=76-byte/19-word layouts.
+The current writer emits V3 with checksum offset 72 covering its first 18
+words. Valid V1/V2 migration and V3 roundtrip must production-load, save, and
+reload; legacy V1/V2 validate their own checksum and initialize V3-only flags
+to zero. Malformed V1/V2/V3 lengths or checksums must reject to defaults
+without writeback, with exact marker ownership/content and no real-profile
+mutation.
 
 The literal negative CLI matrix must be run with empty stdout, exactly one
 LF-terminated JSON stderr record, exit 2, and no side effects:
@@ -137,7 +157,7 @@ exactly `{"error":"invariant","what":"forced","expected":1,"actual":0}` on stder
 build/DisketteDungeon_diag_mac --clean-profile --seed 12345 --difficulty 1 --weapon 0 --ngplus 0 --action fixture-invariant-failure
 ```
 
-`MetaSave` remains 68 bytes with checksum offset 64. Mac phase status fields
+`MetaSave` is 76 bytes with checksum offset 72. Mac phase status fields
 must be explicit even on failure: `mac_phase_pass` is true only when every Mac
 gate passes (otherwise false), while
 `windows_implementation_complete=false`,

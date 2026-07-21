@@ -21,20 +21,30 @@ static Rng urng = { 0xBADA55C0DEull };
 
 // ----------------------------------------------------------- 스토리 텍스트
 static const char* core_titles[4] = {
-    "조각 #1 — 첫 부팅", "조각 #2 — 첫 승리", "조각 #3 — 마지막 저장", "조각 #4 — 남긴 한 줄"
+    "복구 블록 #1 — 첫 부팅", "복구 블록 #2 — 첫 승리", "복구 블록 #3 — 마지막 저장", "복구 블록 #4 — 남긴 한 줄"
 };
 static const char* core_texts[4] = {
-    "작은 손이 디스켓을 밀어 넣는다.\n드르륵 — 드라이브가 처음으로 노래했다.\n화면이 켜졌고, 하나의 세계가 시작됐다.",
-    "수십 번을 졌던 보스가 마침내 무너졌다.\n아이는 두 팔을 번쩍 들어 올렸다.\n등 뒤에서 누군가 작게 박수를 쳤다.",
-    "조금 자란 손이 디스켓을 뺐다.\n\"다음에 마저 해야지.\"\n그 '다음'은, 오지 않았다.",
-    "세이브 데이터 한구석, 서툰 글씨의 한 줄.\n내용은 흐려서 읽을 수 없다.\n...읽기 헤드에 닿으면, 보일 것이다.",
+    "작은 손이 디스켓을 밀어 넣는다.\n화면이 켜지고 첫 모험이 시작된다.",
+    "수십 번의 실패 끝에 두 팔이 올라간다.\n옆에서 작은 박수가 들린다.",
+    "조금 자란 손이 디스켓을 다시 둔다.\n\"다음에 마저 해야지.\"",
+    "세이브 블록 한구석의 글씨가\n읽기 창의 빛에서 또렷해진다.",
 };
+static const char* core_inventory_texts[4] = {
+    "신호 획득 · 처음 켜진 화면", "승리의 흔적 · 첫 승리와 박수",
+    "읽히지 않은 작별 · 다음에 마저", "검증된 메시지 · 읽기 창의 한 줄",
+};
+static const char* core_title_for(int core_id){
+    return core_id>=0&&core_id<4?core_titles[core_id]:"복구 블록 — 확인 불가";
+}
+static const char* core_text_for(int core_id){
+    return core_id>=0&&core_id<4?core_texts[core_id]:"복구 블록을 확인할 수 없다.";
+}
 static const char* intro_pages[3] = {
     "20년 전 —\n한 아이가 모든 모험을\n1.44MB 디스켓 한 장에 저장했다.",
-    "아이는 자랐고, 잊었다.\n서랍 속에서 디스켓은\n천천히 부패해 갔다.\n\n오늘, 마지막으로 단 한 번\n읽기 헤드가 돈다.",
-    "당신은 가장 깊은 배드 섹터에 남은\n마지막 멀쩡한 데이터 조각.\n\n빛이 닿는 곳, 읽기 헤드까지\n올라가야 한다.\n\n무엇을 끝까지 기억할 것인가.",
+    "아이는 자랐고, 잊었다.\n서랍 속에서 디스켓은\n천천히 부패해 갔다.\n\n오늘, 원본에 쓰지 않는\n마지막 한 번의 복구 패스가 시작된다.",
+    "당신은 가장 깊은 배드 섹터에 남은\n마지막 정상 인덱스 조각.\n\n빛이 닿는 곳, 읽기 창까지\n올라가야 한다.\n\n무엇을 끝까지 기억할 것인가.",
 };
-static const char* biome_names[4] = { "배드 섹터", "잃어버린 트랙", "단편화 지대", "부트 레코드" };
+static const char* biome_names[4] = { "배드 섹터", "잃어버린 트랙", "단편화 지대", "읽기 창" };
 static const char* boss_names[4] = { "부패충 ROT", "메아리 ECHO", "단편기 DEFRAG", "삭제 NULL" };
 static const char* diff_names[3] = { "쉬움", "보통", "어려움" };
 
@@ -52,6 +62,14 @@ static const char* promise_label(int promise){
     }
 }
 
+static const char* branch_promise_display_label(int promise){
+    switch (promise){
+        case PROMISE_WEAPON: return "무기 획득 보장 · 세부\n능력은 획득 시 확인";
+        case PROMISE_RELIC: return "유물 획득 보장 · 세부\n효과는 획득 시 확인";
+        default: return promise_label(promise);
+    }
+}
+
 static v2 play_camera(Room* r){
     float room_px_x=r->w*TILE, room_px_y=r->h*TILE;
     float x = room_px_x<=VIRT_W ? (room_px_x-VIRT_W)*0.5f
@@ -63,8 +81,8 @@ static v2 play_camera(Room* r){
 
 static v2 branch_promise_label_pos(float x,float y,float cam_x,float cam_y,const char* label){
     float half=text_width(label,0.42f)*0.5f;
-    return V2(clampf(x,cam_x+half+4,cam_x+VIRT_W-half-4),
-              clampf(y+14,cam_y+84,cam_y+VIRT_H-24));
+    return V2(clampf(x-cam_x,half+16,VIRT_W-half-16),
+              clampf(y-cam_y+14,84,VIRT_H-24));
 }
 static bool branch_promise_label_visible(float y,float cam_y){
     float label_y=y+14;
@@ -73,9 +91,9 @@ static bool branch_promise_label_visible(float y,float cam_y){
 
 // 엔딩: 0 빈손 1 표준 2 트루
 static const char* ending_lines[3][4] = {
-    { "읽기 헤드가 도착했다.", "...파일은 비어 있었다.", "포맷. 조용한 점멸 하나.", "아무것도 기억되지 않았다." },
-    { "읽기 헤드가 도착했다.", "화면 가득, 청록빛.", "모니터 앞의 어른이 멈칫한다.", "\"...아직 있었네.\"" },
-    { "읽기 헤드가 도착했다.", "재생된 것은 세이브가 아니라,\n아이가 그 시절 자신에게 남긴 한 줄.", "\"이 모험을 지우지 마.\n 나는 여기서 가장 용감했어.\"", "어른이 된 주인이, 그걸 읽는다." },
+    { "세 번의 읽기가 끝났다.", "복구 이미지를 만들 수 없었다.", "원본에는 아무것도 쓰지 않는다.", "드라이브가 멎고 원본 디스크는 다시 서랍으로 들어간다.\n읽히지 않은 기억은 돌아오지 않았다." },
+    { "복구 블록이 모였다.", "부분 복구 이미지가 메모리에 재구성된다.", "\"...아직 있었네.\"", "읽힌 조각만 별도의 복구 이미지로 남긴다.\n어른은 원본 디스크를 건드리지 않는다." },
+    { "네 복구 블록이 맞물렸다.", "복구 이미지가 검증된다.", "\"이 모험을 지우지 마.\"", "어른은 원본 디스크를 버리지 않고,\n복구된 마지막 한 줄을 읽는다." },
 };
 static const char* ending_names[3] = { "지워짐", "한 번 더", "전부 기억해" };
 
@@ -103,6 +121,25 @@ static col3 enemy_tint(int b){
         case 2: return COL(0xE09CC8);
         default: return COL(0xA8C0F0);
     }
+}
+
+static void draw_enemy_player_feedback(const EnemyFeedback* feedback){
+    if (feedback->t<=0) return;
+    float sx=feedback->pos.x-G.cam.x, sy=feedback->pos.y-G.cam.y;
+    if (sx<-24 || sx>VIRT_W+24 || sy<-24 || sy>VIRT_H+24) return;
+    float bar_w=clampf(feedback->radius*2.8f,18.0f,34.0f);
+    float x=clampf(feedback->pos.x,G.cam.x+bar_w*0.5f+3.0f,G.cam.x+VIRT_W-bar_w*0.5f-3.0f);
+    float y=clampf(feedback->pos.y-feedback->radius*1.6f-9.0f,G.cam.y+16.0f,G.cam.y+VIRT_H-8.0f);
+    draw_quad(x-bar_w*0.5f-1,y-1,bar_w+2,4,COL(0x08050D),0.9f);
+    draw_quad(x-bar_w*0.5f,y,bar_w*feedback->hp,2,feedback->elite?COL(0xFFD060):COL(0xFF3D7F),0.95f);
+    char damage[24];
+    float rise=(0.9f-feedback->t)*10.0f;
+    float text_y=clampf(y-8.0f-rise,G.cam.y+5.0f,G.cam.y+VIRT_H-12.0f);
+    if (feedback->crit) snprintf(damage,sizeof(damage),"치명 %d",(int)lroundf(feedback->damage));
+    else snprintf(damage,sizeof(damage),"%d",(int)lroundf(feedback->damage));
+    draw_text_center(damage,x,text_y,feedback->crit?0.58f:0.52f,
+                     feedback->crit?COL(0xFFD060):COL(0xFFFFFF),
+                     clampf(feedback->t/0.18f,0,1));
 }
 
 // ----------------------------------------------------------- play drawing
@@ -142,6 +179,7 @@ static float enemy_size(int type){
     }
     return 14;
 }
+static void draw_reward_effect_label(const Pickup* pk);
 static int pickup_sprite(const Pickup* pk){
     switch (pk->type){
         case PK_WEAPON: return weapon_defs[pk->weapon.type].spr;
@@ -229,13 +267,17 @@ void draw_play(void){
             }
             float dx=(r->door_x[dn]+ix)*TILE+8.0f;
             float dy=(r->door_y[dn]+iy)*TILE+8.0f;
-            const char* label=promise_label(pr);
+            const char* label=branch_promise_display_label(pr);
             v2 label_pos=branch_promise_label_pos(dx,dy,cx,cy,label);
             draw_sprite(icon,dx,dy+bob,12,12,COL(0xFFFFFF),1,false,0);
             if (pr==PROMISE_WEAPON || branch_promise_label_visible(dy,cy))
                 draw_text_center(label,label_pos.x,label_pos.y,0.42f,COL(0xE8E0F8),0.9f);
         }
     }
+    for (int i=0;i<MAX_PICKUPS;i++)
+        if (G.pickups[i].active && (G.pickups[i].type==PK_WEAPON ||
+            G.pickups[i].type==PK_RELIC || G.pickups[i].type==PK_WRELIC))
+            draw_reward_effect_label(&G.pickups[i]);
     // 픽업
     // 기억 이벤트 — 방 클리어 뒤 배드 섹터에 남은 조각
     if (r->event_state==MEM_STATE_AVAILABLE){
@@ -299,6 +341,7 @@ void draw_play(void){
             draw_line(e->pos.x,e->pos.y,e->target.x,e->target.y,2,COL(0xFF3D7F),0.5f+0.3f*sinf(G.time*18.0f));
         }
     }
+    for (int i=0;i<MAX_ENTITIES;i++) draw_enemy_player_feedback(&G.enemy_feedback[i]);
     // 범위지정 위험구역 예고
     for (int i=0;i<MAX_ZONES;i++){
         AoeZone* z=&G.zones[i];
@@ -401,13 +444,6 @@ void draw_play(void){
         else if (pk->type==PK_SHARD) draw_light_blob(pk->pos.x,pk->pos.y,30,COL(0x9FFFF0),0.45f);
         else draw_light_blob(pk->pos.x,pk->pos.y,18,COL(0xFFD060),0.3f);
     }
-    // 문/출구 빛 — 모든 벽 스캔
-    for (int y=0;y<RH;y++) for (int x=0;x<RW;x++){
-        if (x!=0&&x!=RW-1&&y!=0&&y!=RH-1) continue; // 벽 둘레만
-        uint8_t t=r->tiles[y][x];
-        if (t==T_DOOR_OPEN||t==T_EXIT)
-            draw_light_blob(x*TILE+8,(float)y*TILE+8,42.0f+6.0f*sinf(G.time*3.0f),COL(0x3FE0C5),0.7f);
-    }
     for (int i=0;i<MAX_ENTITIES;i++){
         Entity* e=&G.ents[i];
         if (!e->active) continue;
@@ -498,14 +534,39 @@ static const char* memory_tag_effect(int tag){
 static int memory_item_kb(int kb){
     return G.pl.relics[RELIC_COMPRESS]?kb*4/5:kb;
 }
+static const char* story_memory_context(int biome,int event_type,int tag){
+    static const char* contexts[4][2][MEM_TAG_COUNT]={
+        {{"실패해도 다시 누른 시작 버튼.","옆자리의 박수가 아직 남아 있다.","다음에 마저 하자는 말을 기억한다."},
+         {"깨진 기록도 앞으로 나아가려 한다.","흐린 목소리가 서로 이어진다.","지워진 줄 사이에 약속이 남아 있다."}},
+        {{"실패해도 다시 누른 시작 버튼.","옆자리의 박수가 아직 남아 있다.","다음에 마저 하자는 말을 기억한다."},
+         {"깨진 기록도 앞으로 나아가려 한다.","흐린 목소리가 서로 이어진다.","지워진 줄 사이에 약속이 남아 있다."}},
+        {{"실패해도 다시 누른 시작 버튼.","옆자리의 박수가 아직 남아 있다.","다음에 마저 하자는 말을 기억한다."},
+         {"깨진 기록도 앞으로 나아가려 한다.","흐린 목소리가 서로 이어진다.","지워진 줄 사이에 약속이 남아 있다."}},
+        {{"실패해도 다시 누른 시작 버튼.","옆자리의 박수가 아직 남아 있다.","다음에 마저 하자는 말을 기억한다."},
+         {"깨진 기록도 앞으로 나아가려 한다.","흐린 목소리가 서로 이어진다.","지워진 줄 사이에 약속이 남아 있다."}},
+    };
+    if (biome<0||biome>=4||event_type<MEM_EVENT_ECHO||event_type>MEM_EVENT_CORRUPTED||
+        tag<0||tag>=MEM_TAG_COUNT) return "복구 신호가 잠시 흔들린다.";
+    return contexts[biome][event_type-MEM_EVENT_ECHO][tag];
+}
+static const char* story_boss_framing(int biome){
+    static const char* lines[4]={
+        "손상된 첫 트랙을 지나야 신호가 이어진다.",
+        "계속된 승리가 읽힌 흔적을 막는다.",
+        "조각난 블록을 통과해야 마지막 저장에 닿는다.",
+        "삭제의 빈칸을 지나야 메시지를 검증할 수 있다.",
+    };
+    return biome>=0&&biome<4?lines[biome]:"복구 신호가 이어진다.";
+}
 static void draw_memory_event(void){
     Room* r=&G.room;
     if (r->event_state!=MEM_STATE_AVAILABLE) return;
     char buf[160];
-    float x=8,y=158;
-    draw_quad(x-4,y-5,248,108,COL(0x0B0710),0.88f);
+    float x=8,y=145;
+    draw_quad(x-4,y-5,248,121,COL(0x0B0710),0.88f);
     snprintf(buf,sizeof(buf),"기억 로그 · %s",r->event_type==MEM_EVENT_ECHO?"메아리":"손상된 기억");
     draw_text(buf,x,y,0.78f,COL(0x9FFFF0),1); y+=15;
+    draw_text(story_memory_context(r->biome,r->event_type,r->event_tag),x,y,0.54f,COL(0xE8E0F8),0.94f); y+=12;
     snprintf(buf,sizeof(buf),"태그: %s",memory_tag_name(r->event_tag));
     draw_text(buf,x,y,0.68f,COL(0xC8C0E0),1); y+=13;
     snprintf(buf,sizeof(buf),"효과: %s",memory_tag_effect(r->event_tag));
@@ -513,18 +574,18 @@ static void draw_memory_event(void){
     snprintf(buf,sizeof(buf),"보관 비용: %dKB (원본 64KB)",memory_item_kb(64));
     draw_text(buf,x,y,0.62f,COL(0xC8C0E0),1); y+=12;
     if (r->event_type==MEM_EVENT_ECHO){
-        draw_text("E 보관  ·  Q 폐기 → +3 바이트",x,y,0.68f,COL(0xFFD060),1);
+        draw_text("E : 보관 · Q : 폐기 → +3 바이트",x,y,0.68f,COL(0xFFD060),1);
     } else {
         if (G.memory.pending_trait){
-            snprintf(buf,sizeof(buf),"E 보관 불가 · 정예 대기열 사용 중 (%s)",
+            snprintf(buf,sizeof(buf),"E : 보관 불가 · 정예 대기열 사용 중 (%s)",
                      memory_trait_name(G.memory.pending_trait));
             draw_text(buf,x,y,0.60f,COL(0xFFB0CC),1); y+=12;
         } else {
-            snprintf(buf,sizeof(buf),"E 보관 → 다음 일반 적 정예 승급 (%s)",
+            snprintf(buf,sizeof(buf),"E : 보관 → 다음 일반 적 정예 승급 (%s)",
                      memory_trait_name(r->event_trait));
             draw_text(buf,x,y,0.60f,COL(0xFFB0CC),1); y+=12;
         }
-        draw_text("승급 적 처치 시 +2 바이트  ·  Q 폐기 → HP +1",x,y,0.58f,COL(0xFFD060),1);
+        draw_text("승급 적 처치 시 +2 바이트 · Q : 폐기 → HP +1",x,y,0.58f,COL(0xFFD060),1);
     }
     draw_sprite(r->event_type==MEM_EVENT_ECHO?SPR_CORE_SHARD:SPR_SHARD,
                 x+230,y-15,13,13,COL(0xFFFFFF),0.9f,false,G.time);
@@ -549,17 +610,119 @@ static void draw_memory_log(void){
     }
 }
 // ----------------------------------------------------------- HUD
+static col3 weapon_relic_color(int weapon){
+    static const col3 colors[WPN_COUNT]={
+        {0.25f,0.95f,0.82f}, {1.00f,0.68f,0.30f}, {0.98f,0.42f,0.72f},
+        {0.55f,0.94f,0.45f}, {1.00f,0.42f,0.38f}, {0.68f,0.48f,1.00f}
+    };
+    return colors[weapon];
+}
+static const char* weapon_relic_type_name(int weapon){
+    static const char* names[WPN_COUNT]={"검","포","산탄","글레이브","랜스","완드"};
+    return names[weapon];
+}
+static void weapon_relic_effect_lines(const char* text,char lines[3][96]){
+    const char* divider=strchr(text,'|');
+    if (divider){
+        snprintf(lines[0],96,"%.*s",(int)(divider-text),text);
+        snprintf(lines[1],96,"%s",divider+1);
+        lines[2][0]=0;
+        return;
+    }
+    const char *first=0,*second=0,*fourth=0;
+    int spaces=0;
+    for (const char* p=text;*p;p++) if (*p==' '){
+        spaces++;
+        if (spaces==1) first=p;
+        else if (spaces==2) second=p;
+        else if (spaces==4) fourth=p;
+    }
+    if (!spaces){ snprintf(lines[0],96,"%s",text); lines[1][0]=lines[2][0]=0; return; }
+    const char* a=spaces==1?first:second;
+    snprintf(lines[0],96,"%.*s",(int)(a-text),text);
+    if (spaces<=3){ snprintf(lines[1],96,"%s",a+1); lines[2][0]=0; return; }
+    snprintf(lines[1],96,"%.*s",(int)(fourth-a-1),a+1);
+    snprintf(lines[2],96,"%s",fourth+1);
+}
+static void codex_detail_effect_lines(const char* text,char lines[3][96]){
+    if (text_width(text,0.48f)<=190.0f){
+        snprintf(lines[0],96,"%.95s",text);
+        lines[1][0]=lines[2][0]=0;
+        return;
+    }
+    weapon_relic_effect_lines(text,lines);
+}
+static const char* reward_weapon_mode(int weapon){
+    static const char* modes[WPN_COUNT]={
+        "근접 베기", "충전 포탄 폭발", "다발 산탄 분사", "투척 후 귀환", "직선 관통 창", "유도탄 연속 발사"
+    };
+    return modes[weapon];
+}
+static const char* reward_prefix_effect(int prefix){
+    static const char* effects[PFX_COUNT]={
+        "", "적중 시 3초 화상", "적중 시 2초 둔화", "치명타 확률 30%", "용량 25% 감소"
+    };
+    return effects[prefix];
+}
+static void draw_reward_effect_label(const Pickup* pk){
+    char title[96], name[96], desc[128], lines[3][96];
+    col3 c=COL(0x9FFFF0);
+    if (pk->type==PK_WRELIC){
+        const WeaponRelicDef* wr=&weapon_relic_defs[pk->relic];
+        snprintf(title,sizeof(title),"%s 유물",weapon_relic_type_name(wr->weapon));
+        snprintf(name,sizeof(name),"%s",wr->name);
+        snprintf(desc,sizeof(desc),"%s",wr->desc);
+        c=weapon_relic_color(wr->weapon);
+    } else if (pk->type==PK_RELIC){
+        snprintf(title,sizeof(title),"일반 유물");
+        snprintf(name,sizeof(name),"%s",relic_defs[pk->relic].name);
+        snprintf(desc,sizeof(desc),"%s",relic_defs[pk->relic].desc);
+    } else {
+        const WeaponDef* wd=&weapon_defs[pk->weapon.type];
+        snprintf(title,sizeof(title),"무기");
+        snprintf(name,sizeof(name),"%s%s",prefix_names[pk->weapon.prefix],wd->name);
+        snprintf(desc,sizeof(desc),"공격 %.1f · %s%s%s",wd->dmg,reward_weapon_mode(pk->weapon.type),
+                 pk->weapon.prefix==PFX_NONE?"":" · ",reward_prefix_effect(pk->weapon.prefix));
+        c=weapon_relic_color(pk->weapon.type);
+    }
+    weapon_relic_effect_lines(desc,lines);
+    v2 label=reward_label_pos(pk);
+    float x=label.x, y=label.y;
+    draw_quad(x-90,y-5,180,75,c,1);
+    draw_quad(x-89,y-4,178,73,COL(0x0B0710),1);
+    draw_text_center(title,x,y,0.15f,c,1);
+    draw_text_center(name,x,y+12,0.20f,COL(0xFFF0D0),1);
+    for (int i=0;i<3;i++) if (lines[i][0])
+        draw_text_center(lines[i],x,y+28+i*13,0.11f,COL(0xFFFFFF),1);
+}
+static void draw_shield_heart(float x,float capacity,float amount){
+    col3 empty=COL(0x176D72), filled=COL(0x3FE0C5);
+    #define SHIELD_HEART(C,A) do { \
+        draw_quad(x-4,7,3,3,C,A); draw_quad(x+1,7,3,3,C,A); \
+        draw_quad(x-5,10,10,4,C,A); draw_quad(x-3,14,6,3,C,A); \
+        draw_quad(x-1,17,2,2,C,A); \
+    } while (0)
+    #define SHIELD_HALF(C,A) do { \
+        draw_quad(x-4,7,3,3,C,A); draw_quad(x-5,10,5,4,C,A); \
+        draw_quad(x-3,14,3,3,C,A); draw_quad(x-1,17,1,2,C,A); \
+    } while (0)
+    if (capacity>=1.0f) SHIELD_HEART(empty,0.85f); else SHIELD_HALF(empty,0.85f);
+    if (amount>=1.0f) SHIELD_HEART(filled,1.0f); else if (amount>=0.5f) SHIELD_HALF(filled,1.0f);
+    #undef SHIELD_HALF
+    #undef SHIELD_HEART
+}
 void hud_draw(void){
     Player* p=&G.pl;
     char buf[160];
     // 튜토리얼 힌트 (UI 패스 — 라이팅 영향 없음)
     if (G.room.biome==0&&G.room.idx==0){
         float ha=0.55f+0.2f*sinf(G.time*2.0f);
-        draw_text("WASD 이동",56,84,0.9f,COL(0x9FFFF0),ha);
-        draw_text("마우스/스페이스 공격",56,108,0.9f,COL(0x9FFFF0),ha);
-        draw_text("Shift 대시 · E 줍기",56,132,0.9f,COL(0x9FFFF0),ha);
-        draw_text("빛이 닿는 곳만 안전하다",250,116,0.9f,COL(0x6FBFB0),ha*0.9f);
-        draw_text("Tab 가방 — 무게가 속도·빛·엔딩을 좌우한다",56,156,0.9f,COL(0x9FFFF0),ha);
+        draw_text("W,A,S,D : 이동",56,84,0.9f,COL(0x9FFFF0),ha);
+        draw_text("마우스/Space : 공격",56,108,0.9f,COL(0x9FFFF0),ha);
+        draw_text("Shift : 대시 · E : 줍기",56,132,0.9f,COL(0x9FFFF0),ha);
+        draw_text("빛이 강해지면 느려지지만 강해진다.",250,100,0.62f,COL(0xB8FFF0),1.0f);
+        draw_text("빛이 줄어들면 약해지지만 빨라진다.",250,120,0.62f,COL(0xB8FFF0),1.0f);
+        draw_text("Tab : 가방",56,156,0.9f,COL(0x9FFFF0),ha);
     }
     // 플로터 (월드 좌표 → 화면 좌표, 카메라 보정)
     for (int i=0;i<MAX_FLOATERS;i++){
@@ -601,7 +764,18 @@ void hud_draw(void){
     // 무결성
     for (int i=0;i<p->maxhp;i++){
         bool full = p->hp>=i+1;
-        draw_sprite(SPR_HEART,12+i*13.0f,12,11,10,full?COL(0xFFFFFF):COL(0x554060),full?1.0f:0.55f,false,0);
+        bool half = !full && p->hp>=i+0.5f;
+        float hx=12+i*13.0f;
+        draw_sprite(SPR_HEART,hx,12,11,10,full||half?COL(0xFFFFFF):COL(0x554060),full||half?1.0f:0.55f,false,0);
+        if (half) draw_quad(hx,6.5f,5.5f,11.0f,COL(0x0B0710),0.9f);
+    }
+    float shield_limit=player_light_shield_limit();
+    int shield_hearts=(int)ceilf(shield_limit);
+    for (int i=0;i<shield_hearts;i++){
+        float capacity=clampf(shield_limit-(float)i,0.0f,1.0f);
+        float amount=clampf(p->shield-(float)i,0.0f,1.0f);
+        float sx=17+p->maxhp*13.0f+i*13.0f;
+        draw_shield_heart(sx,capacity,amount);
     }
     // 용량 게이지
     {
@@ -612,13 +786,15 @@ void hud_draw(void){
         draw_quad(bx,by,bw*wfrac,bh,bc,0.95f);
         draw_quad(bx+bw*0.4f,by,1,bh,COL(0xFFFFFF),0.4f);
         draw_quad(bx+bw*0.8f,by,1,bh,COL(0xFFFFFF),0.4f);
-        snprintf(buf,sizeof(buf),"무게 %d/1440KB",player_used_kb());
+        snprintf(buf,sizeof(buf),"복구 버퍼 %d/1440KB",player_used_kb());
         draw_text(buf,bx+bw+5,by-2,0.65f,COL(0xC8C0E0),0.9f);
     }
     // 무기
     draw_sprite(weapon_defs[p->weapon.type].spr,16,44,14,14,COL(0xFFFFFF),1,false,0);
     snprintf(buf,sizeof(buf),"%s%s",prefix_names[p->weapon.prefix],weapon_defs[p->weapon.type].name);
     draw_text(buf,28,38,0.7f,COL(0xC8C0E0),0.9f);
+    snprintf(buf,sizeof(buf),"빛 %.0f",player_light_radius());
+    draw_text(buf,8,56,0.65f,COL(0x9FFFF0),0.9f);
     // 진행/바이트/조각
     snprintf(buf,sizeof(buf),"%s  %d/9",biome_names[G.room.biome],G.room.idx+1);
     draw_text(buf,VIRT_W-text_width(buf,0.75f)-10,10,0.75f,COL(0x9FFFF0),0.9f);
@@ -661,6 +837,7 @@ void hud_draw(void){
         float a=clampf(G.boss_intro_t,0,1);
         const char* nm=boss_names[G.room.biome];
         draw_text_center(nm,VIRT_W/2,VIRT_H/2-30,1.8f,COL(0xFF3D7F),a);
+        draw_text_center(story_boss_framing(G.room.biome),VIRT_W/2,VIRT_H/2-8,0.54f,COL(0xE8E0F8),a);
     }
     // 메시지 (보스전이면 이름/체력바 위로 올려 겹침 방지)
     if (G.msg_t>0){
@@ -677,24 +854,59 @@ static void draw_overlay_bg(float a){
     draw_quad(0,0,VIRT_W,VIRT_H,COL(0x0B0710),a);
 }
 
+static void draw_relic_swap_card(float x,float y,float w,float h,int type,int id,bool selected){
+    bool weapon=type==PK_WRELIC;
+    const char* name=weapon?weapon_relic_defs[id].name:relic_defs[id].name;
+    const char* desc=weapon?weapon_relic_defs[id].desc:relic_defs[id].desc;
+    col3 c=weapon?weapon_relic_color(weapon_relic_defs[id].weapon):COL(0x9FFFF0);
+    char lines[3][96];
+    weapon_relic_effect_lines(desc,lines);
+    draw_quad(x-2,y-2,w+4,h+4,selected?COL(0xFFFFFF):COL(0x08050D),selected?0.95f:0.9f);
+    draw_quad(x,y,w,h,c,0.62f);
+    draw_quad(x+2,y+2,w-4,h-4,COL(0x0B0710),0.94f);
+    draw_text_center(weapon?weapon_relic_type_name(weapon_relic_defs[id].weapon):"일반 유물",x+w*0.5f,y+8,0.38f,c,1);
+    draw_text_center(name,x+w*0.5f,y+22,0.52f,COL(0xFFF0D0),1);
+    for (int i=0;i<3;i++) if (lines[i][0])
+        draw_text_center(lines[i],x+w*0.5f,y+40+i*12,0.24f,COL(0xFFFFFF),1);
+}
+
+static void draw_relic_swap(void){
+    bool weapon=G.relic_swap_type==PK_WRELIC;
+    int count=weapon?2:4;
+    draw_overlay_bg(0.9f);
+    draw_text_center("새 유물",VIRT_W*0.5f,14,0.75f,COL(0xFFFFFF),1);
+    draw_relic_swap_card(130,28,220,72,G.relic_swap_type,G.relic_swap_id,false);
+    draw_text_center("교체할 보유 유물 선택",VIRT_W*0.5f,116,0.62f,COL(0xE8E0F8),1);
+    float w=weapon?180.0f:104.0f;
+    float gap=weapon?28.0f:12.0f;
+    float total=count*w+(count-1)*gap;
+    float x=(VIRT_W-total)*0.5f;
+    for (int i=0;i<count;i++){
+        int id=weapon?G.pl.wrelics[G.relic_swap_slots[i]]:G.relic_swap_slots[i];
+        draw_relic_swap_card(x+i*(w+gap),142,w,76,G.relic_swap_type,id,G.relic_swap_sel==i);
+    }
+    draw_text_center("A/D 또는 ←/→ : 선택 · Enter/Space : 교체 · Esc : 현재 상태 유지",VIRT_W*0.5f,244,0.42f,COL(0xB8FFF0),1);
+}
+
 static void draw_inventory(void){
     draw_overlay_bg(0.86f);
     char buf[160];
-    draw_text_center("— 가방 · 1.44MB —",VIRT_W/2,16,1.1f,COL(0x9FFFF0),1);
-    float y=44;
+    draw_text_center("— 복구 버퍼 · 1440KB —",VIRT_W/2,16,1.1f,COL(0x9FFFF0),1);
+    draw_text_center("런 중 재구성 이미지에 할당되는 버퍼",VIRT_W/2,32,0.58f,COL(0x8878A8),1);
+    float y=48;
     snprintf(buf,sizeof(buf),"무기  %s%s  (%dKB)",prefix_names[G.pl.weapon.prefix],
              weapon_defs[G.pl.weapon.type].name,weapon_defs[G.pl.weapon.type].kb);
     draw_text(buf,40,y,0.85f,COL(0xE8E0F8),1); y+=20;
     for (int i=0;i<RELIC_COUNT;i++){
         if (!G.pl.relics[i]) continue;
-        snprintf(buf,sizeof(buf),"유물  %s (%dKB) — %s",relic_defs[i].name,relic_defs[i].kb,relic_defs[i].desc);
+        snprintf(buf,sizeof(buf),"유물  %s — %s",relic_defs[i].name,relic_defs[i].desc);
         draw_text(buf,40,y,0.75f,COL(0xC8B8E8),1); y+=16;
     }
     for (int i=0;i<2;i++){
         int wr=G.pl.wrelics[i];
         if (wr<0) continue;
         const WeaponRelicDef* wd=&weapon_relic_defs[wr];
-        snprintf(buf,sizeof(buf),"무기유물  %s [%s] (%dKB) — %s",wd->name,weapon_defs[wd->weapon].name,wd->kb,wd->desc);
+        snprintf(buf,sizeof(buf),"무기유물  %s [%s] — %s",wd->name,weapon_defs[wd->weapon].name,wd->desc);
         draw_text(buf,40,y,0.7f,COL(0xFFD060),1); y+=16;
     }
     snprintf(buf,sizeof(buf),"추억 조각 ×%d  (%dKB)",G.pl.shards,G.pl.shards*64);
@@ -703,12 +915,15 @@ static void draw_inventory(void){
     snprintf(buf,sizeof(buf),"핵심 조각 ×%d  (%dKB)",ncore,ncore*128);
     draw_text(buf,40,y,0.85f,COL(0xFFFFFF),1); y+=18;
     for (int i=0;i<4;i++){
-        if (G.pl.cores&(1<<i)){ draw_text(core_titles[i],56,y,0.7f,COL(0xBFE8DC),1); y+=15; }
+        if (G.pl.cores&(1<<i)){
+            draw_text(core_title_for(i),56,y,0.7f,COL(0xBFE8DC),1); y+=12;
+            draw_text(core_inventory_texts[i],68,y,0.48f,COL(0x8878A8),1); y+=12;
+        }
     }
     y+=6;
-    snprintf(buf,sizeof(buf),"사용 %d / 1440 KB",player_used_kb());
+    snprintf(buf,sizeof(buf),"복구 버퍼 사용 %d / 1440 KB",player_used_kb());
     draw_text(buf,40,y,0.95f,weight_frac()>0.8f?COL(0xFF3D7F):COL(0x9FFFF0),1);
-    draw_text_center("Q 조각 버리기 · Tab 닫기",VIRT_W/2,VIRT_H-26,0.75f,COL(0x8878A8),1);
+    draw_text_center("Q : 조각 버리기 · Tab : 닫기",VIRT_W/2,VIRT_H-26,0.75f,COL(0x8878A8),1);
     // 무게 효과 설명
     const char* tip = weight_frac()<0.4f? "가벼움: 빠르지만 빛과 공격력이 약하다"
                      : weight_frac()<0.8f? "적정: 균형 잡힌 상태"
@@ -728,9 +943,9 @@ static void draw_flashback(void){
     draw_glow_blob(VIRT_W*0.5f,VIRT_H*0.35f,40,COL(0x9FFFF0),0.5f);
     draw_ui_begin();
     draw_overlay_bg(0.2f);
-    draw_text_center(core_titles[G.fb_core],VIRT_W/2,44,1.2f,COL(0x9FFFF0),clampf(t*2.0f,0,1));
+    draw_text_center(core_title_for(G.fb_core),VIRT_W/2,44,1.2f,COL(0x9FFFF0),clampf(t*2.0f,0,1));
     // 텍스트 타이핑
-    const char* full=core_texts[G.fb_core];
+    const char* full=core_text_for(G.fb_core);
     int show=(int)((t-0.8f)*28.0f);
     if (show<0) show=0;
     char buf[256];
@@ -744,7 +959,7 @@ static void draw_flashback(void){
     size_t len=(size_t)(q-full); if (len>255) len=255;
     memcpy(buf,full,len); buf[len]=0;
     draw_text_center(buf,VIRT_W/2,100,0.95f,COL(0xE8E0F8),1);
-    draw_text_center("핵심 조각 — 잃지 않고 읽기 헤드에 닿으면 엔딩이 바뀐다",
+    draw_text_center("핵심 조각 — 복구 블록을 잃지 않고 읽기 창에 닿으면 엔딩이 바뀐다",
                      VIRT_W/2,VIRT_H-52,0.75f,COL(0x6FBFB0),clampf((t-1.0f)*0.8f,0,0.8f));
     if (t>2.0f)
         draw_text_center("아무 키 — 계속",VIRT_W/2,VIRT_H-30,0.7f,COL(0x8878A8),0.5f+0.3f*sinf(t*4.0f));
@@ -753,18 +968,32 @@ static void draw_flashback(void){
 // ----------------------------------------------------------- 영구 강화
 typedef struct { const char* name; const char* desc; int max; int base_cost; } UpgDef;
 static const UpgDef upg_defs[5] = {
-    {"무결성 코어","시작 무결성 +1",5,40},   // 600B: 3칸 → 최대 8칸
-    {"공격 회로","공격력 +5%",10,10},        // 550B
-    {"가속 캐시","이동속도 +3%",5,20},       // 300B
-    {"루멘 코어","빛 반경 +8%",3,25},        // 150B
-    {"대시 칩","대시 쿨다운 -6%",5,18},      // 270B
+    {"무결성 코어","시작 무결성 +1",5,60},
+    {"공격 회로","공격력 +5%",10,39},
+    {"가속 캐시","이동속도 +3%",5,25},
+    {"루멘 코어","시작 실드 +0.5",4,29},
+    {"대시 칩","대시 쿨다운 -6%",5,26},
 };
-static int upg_cost(int i){ return upg_defs[i].base_cost*((int)G.meta.upg[i]+1); }
+static const int upg_level_costs[5][10] = {
+    {0},
+    {35,66,97,128,159,190,221,252,283,314},
+    {0},
+    {90,140,200,260},
+    {0},
+};
+static int upg_cost(int i){
+    int level=(int)G.meta.upg[i];
+    int custom=upg_level_costs[i][level];
+    return custom?custom:upg_defs[i].base_cost*(level+1);
+}
+
+static const int weapon_unlock_costs[WPN_COUNT] = { 0, 130, 190, 230, 200, 410 };
+static int weapon_unlock_cost(int weapon){ return weapon_unlock_costs[weapon]; }
 
 static void draw_upgrade(void){
     draw_overlay_bg(0.95f);
     char buf[128];
-    draw_text_center("— 영구 강화 —",VIRT_W/2,16,1.1f,COL(0x9FFFF0),1);
+    draw_text_center("— 캐릭터 강화 —",VIRT_W/2,16,1.1f,COL(0x9FFFF0),1);
     snprintf(buf,sizeof(buf),"보유 %u바이트",G.meta.bytes_currency);
     draw_text_center(buf,VIRT_W/2,40,0.85f,COL(0xFFD060),1);
     float y=64;
@@ -772,9 +1001,9 @@ static void draw_upgrade(void){
         bool sel=G.upg_sel==i;
         int lv=(int)G.meta.upg[i];
         if (lv>=upg_defs[i].max)
-            snprintf(buf,sizeof(buf),"%s  Lv%d/%d  MAX — %s",upg_defs[i].name,lv,upg_defs[i].max,upg_defs[i].desc);
+            snprintf(buf,sizeof(buf),"%s  MAX — %s",upg_defs[i].name,upg_defs[i].desc);
         else
-            snprintf(buf,sizeof(buf),"%s  Lv%d/%d  [%d바이트] — %s",upg_defs[i].name,lv,upg_defs[i].max,upg_cost(i),upg_defs[i].desc);
+            snprintf(buf,sizeof(buf),"%s  [%d바이트] — %s",upg_defs[i].name,upg_cost(i),upg_defs[i].desc);
         if (sel) draw_text(">",30,y,0.85f,COL(0x3FE0C5),1);
         draw_text(buf,44,y,0.85f,sel?COL(0xFFFFFF):COL(0x8878A8),1);
         y+=20;
@@ -782,6 +1011,179 @@ static void draw_upgrade(void){
     if (G.upg_sel==5) draw_text(">",30,y+6,0.85f,COL(0x3FE0C5),1);
     draw_text("뒤로",44,y+6,0.85f,G.upg_sel==5?COL(0xFFFFFF):COL(0x8878A8),1);
     draw_text_center("런에서 모은 바이트로 영구히 강해진다 · Esc 뒤로",VIRT_W/2,VIRT_H-22,0.75f,COL(0x6F6090),0.9f);
+}
+
+#ifdef DD_DEBUG
+typedef struct { int before, after; } DebugOpeningTransition;
+static int dbg_opening_active;
+static int dbg_opening_frozen;
+static int dbg_opening_emitted;
+static int dbg_opening_ready;
+static int dbg_opening_rendered;
+static float dbg_opening_hold_t;
+static int dbg_opening_visited;
+static int dbg_opening_natural_timeout;
+static int dbg_opening_handoff_at_ms=-1;
+static const char* dbg_opening_skip_method="none";
+static int dbg_opening_skip_same_frame;
+static int dbg_opening_entered_play;
+static int dbg_opening_flow_step;
+static DebugOpeningTransition dbg_opening_transitions[12];
+static int dbg_opening_transition_count;
+static int dbg_ending_active;
+static int dbg_ending_rendered;
+static int dbg_ending_emitted;
+static float dbg_ending_hold_t;
+static int dbg_ending_result;
+static int dbg_ending_core_count;
+static int dbg_start_intro_active;
+static int dbg_start_intro_frozen;
+static int dbg_start_intro_emitted;
+static float dbg_start_intro_hold_t;
+static int dbg_start_intro_phase;
+static int dbg_start_intro_latches_clear;
+static int dbg_start_intro_replay_complete;
+static int dbg_start_intro_esc_ignored;
+static int dbg_start_intro_input_unchanged;
+#endif
+
+#ifdef DD_DEBUG
+static int boot_beat_index(float t){
+    if (t<3.0f) return 0;
+    if (t<7.0f) return 1;
+    if (t<13.5f) return 2;
+    return 3;
+}
+static const char* boot_beat_name(float t){
+    static const char* names[]={"wake","scan","reveal","title-handoff"};
+    return names[boot_beat_index(t)];
+}
+#endif
+static void draw_title(void);
+static void boot_handoff_to_title(bool natural_timeout, const char* skip_method){
+#ifdef DD_DEBUG
+    if (dbg_opening_active){
+        if (natural_timeout){
+            dbg_opening_natural_timeout=1;
+            dbg_opening_handoff_at_ms=15000;
+            dbg_opening_visited|=1<<3;
+            if (dbg_opening_transition_count<12)
+                dbg_opening_transitions[dbg_opening_transition_count++]=(DebugOpeningTransition){G.state,ST_TITLE};
+        } else {
+            dbg_opening_skip_method=skip_method;
+            dbg_opening_skip_same_frame=1;
+        }
+    }
+#else
+    (void)natural_timeout;
+    (void)skip_method;
+#endif
+    G.state=ST_TITLE;
+    G.state_t=0;
+    if (natural_timeout){
+        G.fade=1;
+        G.fade_dir=-1;
+        G.fade_col=COL(0x000000);
+    }
+    music_set(0);
+}
+
+static void draw_boot(void){
+    float t=G.state_t;
+    float insert=clampf(t/0.9f,0,1);
+    float shutter=clampf((t-0.8f)/1.4f,0,1);
+    float media=clampf((t-1.4f)/1.0f,0,1);
+    float recover=clampf((t-8.0f)/3.2f,0,1);
+    float transfer=clampf((t-11.2f)/2.8f,0,1);
+    float cx=VIRT_W*0.5f, cy=VIRT_H*0.58f;
+    float spin=t*4.5f;
+    int retry=0;
+    float retry_pulse=0;
+    float carriage_track=42.0f;
+    float carriage_angle=5.62f;
+    float carriage_x, carriage_y;
+    float fragment_start_y=cy+24.0f;
+    float fragment_target_y=VIRT_H*0.3f;
+    float fragment_y=fragment_start_y+(fragment_target_y-fragment_start_y)*transfer;
+    if (t>=2.4f && t<5.2f){
+        int seek=(int)((t-2.4f)/0.56f);
+        if (seek>4) seek=4;
+        carriage_track=42.0f-seek*4.0f;
+    } else if (t>=5.2f) {
+        carriage_track=26.0f;
+    }
+    if (t>=5.2f && t<8.0f){
+        retry=(int)((t-5.2f)/0.9f)+1;
+        if (retry>3) retry=3;
+        retry_pulse=1.0f-clampf(fmodf(t-5.2f,0.9f)/0.34f,0,1);
+    }
+    carriage_x=cx+cosf(carriage_angle)*carriage_track;
+    carriage_y=cy+12+sinf(carriage_angle)*carriage_track;
+
+    draw_light_begin(0,0);
+    draw_light_blob(cx,cy+8,42.0f+18.0f*media,COL(0x5E86BC),0.08f+0.16f*media);
+    if (retry_pulse>0) draw_light_blob(carriage_x,carriage_y,20,COL(0xFF8A8A),0.10f+0.28f*retry_pulse);
+    if (transfer>0) draw_light_blob(cx,fragment_y,20+26*transfer,COL(0x7CFCE4),0.12f+0.38f*transfer);
+    draw_glow_begin(0,0);
+    if (media>0) draw_glow_blob(cx,cy+8,14,COL(0x7EABDF),0.12f+0.18f*media);
+    if (transfer>0) draw_glow_blob(cx,fragment_y,10+16*transfer,COL(0x9FFFF0),0.16f+0.48f*transfer);
+
+    draw_scene_begin(0,0);
+    draw_quad(0,0,VIRT_W,VIRT_H,COL(0x090C18),1);
+    for (int y=12;y<VIRT_H;y+=12)
+        draw_line(0,y,VIRT_W,y,1,COL(0x18213A),0.14f+0.05f*sinf(t*4.0f+y));
+    draw_quad(cx-93,cy-65,186*insert,130,COL(0x4A566E),1);
+    draw_quad(cx-88,cy-60,176*insert,120,COL(0x1A253C),1);
+    draw_quad(cx+66,cy-60,22,20,COL(0x090C18),1);
+    draw_line(cx-87,cy-60,cx+66,cy-60,2,COL(0xB7C8E5),0.82f);
+    draw_line(cx+66,cy-60,cx+88,cy-40,2,COL(0xB7C8E5),0.82f);
+    draw_line(cx-88,cy-60,cx-88,cy+60,2,COL(0x7891B8),0.82f);
+    draw_line(cx-88,cy+60,cx+88,cy+60,2,COL(0x7891B8),0.82f);
+    draw_line(cx+88,cy-40,cx+88,cy+60,2,COL(0x5E749A),0.82f);
+    draw_quad(cx-69,cy+23,52,24,COL(0xD5D9DD),0.78f);
+    draw_line(cx-69,cy+23,cx-17,cy+23,1,COL(0xFFFFFF),0.5f);
+    draw_quad(cx+43,cy+37,28,10,COL(0x0A1220),1);
+    draw_ring(cx,cy+12,44,COL(0x55769E),0.72f*media);
+    draw_ring(cx,cy+12,30,COL(0x6D8DB3),0.68f*media);
+    draw_ring(cx,cy+12,17,COL(0x4D698A),0.68f*media);
+    for (int i=0;i<4;i++){
+        float a=spin+i*1.5708f;
+        draw_line(cx+cosf(a)*6,cy+12+sinf(a)*6,cx+cosf(a)*13,cy+12+sinf(a)*13,
+                  2,COL(0xC0D7F5),0.58f*media);
+    }
+    draw_ring(cx,cy+12,7,COL(0xDCEBFF),0.82f*media);
+    draw_quad(cx-52,cy-35,104,18,COL(0x070C16),0.96f);
+    draw_line(cx-52,cy-35,cx+52,cy-35,2,COL(0x8EA4C4),0.78f);
+    draw_line(cx-52,cy-17,cx+52,cy-17,1,COL(0x587293),0.8f);
+    for (int i=0;i<3;i++){
+        float a=5.38f+i*0.12f;
+        draw_line(cx+cosf(a)*23,cy+12+sinf(a)*23,cx+cosf(a)*43,cy+12+sinf(a)*43,
+                  2,COL(0xFF7F91),0.44f+0.4f*retry_pulse);
+    }
+    draw_quad(cx-52+104*shutter,cy-35,52,18,COL(0x9BA6B7),0.9f*(1.0f-shutter));
+    draw_line(cx-51+104*shutter,cy-34,cx+1+104*shutter,cy-34,2,COL(0xF4F7FC),0.75f*(1.0f-shutter));
+    draw_quad(carriage_x-4,carriage_y-7,8,14,COL(0xD4E5F6),0.92f);
+    draw_quad(carriage_x-7,carriage_y+7,14,4,COL(0x6BC4CE),0.72f+0.28f*retry_pulse);
+    if (transfer>0)
+        draw_sprite(SPR_CORE_SHARD,cx,fragment_y,10+7*transfer,12+8*transfer,
+                    COL(0xFFFFFF),0.38f+0.62f*transfer,false,spin);
+    draw_ui_begin();
+    draw_text_center("1.44 MB  //  LAST RECOVERY PASS",cx,30,0.62f,COL(0x6F6090),0.35f+0.55f*insert);
+    if (t<2.4f) draw_text_center("소유자의 마지막 복구 패스",cx,cy+80,0.76f,COL(0xD8E5FF),0.35f+0.65f*insert);
+    else if (t<5.2f) draw_text_center("TRACK SEEK  //  DAMAGED RING",cx,cy+80,0.62f,COL(0x9FC8FF),0.78f);
+    else if (t<8.0f){
+        char retry_text[40];
+        if (t>=7.55f) snprintf(retry_text,sizeof(retry_text),"RETRY SEQUENCE COMPLETE");
+        else snprintf(retry_text,sizeof(retry_text),"READ RETRY %02d/03  //  CRC MISMATCH",retry);
+        draw_text_center(retry_text,cx,t>=7.55f ? cy+68 : cy+80,0.57f,COL(0xFFB4BD),0.72f+0.28f*retry_pulse);
+        if (t>=7.55f){
+            draw_text_center("01/03 DONE  //  02/03 DONE  //  03/03 DONE",cx,cy+81,0.46f,COL(0xD8E5FF),0.9f);
+            draw_text_center("RECALIBRATING",cx,cy+93,0.48f,COL(0xA7B8D8),0.86f);
+        }
+    } else if (t<11.2f) draw_text_center("마지막 정상 인덱스 조각",cx,cy+80,0.72f,COL(0xD8FFF5),0.88f);
+    else draw_text_center("복구 신호가 읽기 창을 지난다",cx,cy+80,0.69f,COL(0x9FFFF0),0.92f);
+    if (!(t>=7.55f && t<8.0f))
+        draw_text_center("ANY KEY / CLICK TO SKIP",cx,VIRT_H-18,0.52f,COL(0xA7B8D8),0.62f+0.18f*sinf(t*4.0f));
 }
 
 static void draw_title(void){
@@ -801,77 +1203,392 @@ static void draw_title(void){
     draw_text_center("- 마지막 읽기 -",VIRT_W/2,62,0.85f,COL(0x6FBFB0),0.9f);
 
     char buf[128];
-    const char* wname = weapon_defs[G.title_weapon].name;
-    bool wlocked = !((G.meta.unlocked_weapons>>G.title_weapon)&1);
-    int wcost = 30+G.title_weapon*12;
-    float y=108;
-    const char* items[7];
-    char witem[64], ditem[48], sitem[48], ngitem[32], uitem[48];
-    if (wlocked) snprintf(witem,sizeof(witem),"무기  %s [%d바이트 해금]",wname,wcost);
-    else snprintf(witem,sizeof(witem),"무기  %s",wname);
-    snprintf(ditem,sizeof(ditem),"난이도  %s",diff_names[G.difficulty]);
-    snprintf(sitem,sizeof(sitem),"시드  %s",G.title_seed?"고정":"무작위");
-    snprintf(ngitem,sizeof(ngitem),"NG+  %s",G.ngplus?"ON":"OFF");
-    int upg_total=0; for (int i=0;i<5;i++) upg_total+=(int)G.meta.upg[i];
-    snprintf(uitem,sizeof(uitem),"영구 강화  [Lv %d]",upg_total);
+    float y=120;
+    const char* items[6];
     items[0]="모험 시작";
-    items[1]=witem; items[2]=uitem; items[3]=ditem; items[4]=sitem;
-    items[5]=G.meta.true_clear? ngitem:"NG+  ???";
-    items[6]="종료";
-    for (int i=0;i<7;i++){
+    items[1]="무기 변경"; items[2]="캐릭터 강화"; items[3]="설정";
+    items[4]="도감"; items[5]="종료";
+    for (int i=0;i<6;i++){
         bool sel = G.menu_sel==i;
         col3 c = sel?COL(0xFFFFFF):COL(0x8878A8);
         if (sel) draw_text(">",VIRT_W/2-text_width(items[i],0.9f)/2-16,y,0.9f,COL(0x3FE0C5),1);
         draw_text_center(items[i],VIRT_W/2,y,0.9f,c,1);
-        y+=18;
+        y+=17;
     }
     snprintf(buf,sizeof(buf),"보유 %u바이트 · 런 %u회 · 최고 도달: %s",
              G.meta.bytes_currency,G.meta.runs,
-             G.meta.wins>0?"읽기 헤드":(G.meta.runs>0?biome_names[G.meta.best_biome]:"-"));
+             G.meta.wins>0?"읽기 창":(G.meta.runs>0?biome_names[G.meta.best_biome]:"-"));
     draw_text_center(buf,VIRT_W/2,VIRT_H-16,0.7f,COL(0x6F6090),0.9f);
 }
 
-static void draw_intro(void){
-    draw_overlay_bg(1.0f);
+static void draw_options(void){
     draw_light_begin(0,0);
-    draw_light_blob(VIRT_W*0.5f,VIRT_H*0.5f,140,COL(0x16223A),0.8f);
+    draw_light_blob(VIRT_W*0.5f,VIRT_H*0.42f,120,COL(0x3FE0C5),0.35f);
     draw_ui_begin();
-    float a=clampf(G.state_t*1.5f,0,1);
-    draw_text_center(intro_pages[G.intro_page],VIRT_W/2,70,0.95f,COL(0xD8D0E8),a);
-    draw_text_center("아무 키 — 계속",VIRT_W/2,VIRT_H-30,0.7f,COL(0x8878A8),0.5f+0.3f*sinf(G.time*4.0f));
+    static const char* labels[]={"배경음악","효과음","난이도","화면 흔들림","스캔라인(CRT효과)","시드","오프닝 다시보기","New Game+","뒤로"};
+    char value[64];
+    draw_text_center("설정",VIRT_W/2,34,1.2f,COL(0x9FFFF0),1);
+    for (int i=0;i<9;i++){
+        if (i==0) snprintf(value,sizeof value,"%s",G.meta.opt_bgm?"ON":"OFF");
+        else if (i==1) snprintf(value,sizeof value,"%s",G.meta.opt_sfx?"ON":"OFF");
+        else if (i==2) snprintf(value,sizeof value,"%s",diff_names[G.difficulty]);
+        else if (i==3) snprintf(value,sizeof value,"%s",G.meta.opt_shake?"ON":"OFF");
+        else if (i==4) snprintf(value,sizeof value,"%s",G.meta.opt_scanline?"ON":"OFF");
+        else if (i==5) snprintf(value,sizeof value,"%s",G.title_seed?"최근 시드":"무작위");
+        else if (i==6) snprintf(value,sizeof value,"%s",G.meta.intro_replay_queued?"ON":"OFF");
+        else if (i==7) snprintf(value,sizeof value,"%s",G.meta.true_clear?(G.ngplus?"ON":"OFF"):"LOCKED");
+        else value[0]=0;
+        float y=62+i*18;
+        bool selected=G.menu_sel==i;
+        if (selected) draw_text(">",126,y,0.7f,COL(0x3FE0C5),1);
+        draw_text(labels[i],144,y,0.7f,selected?COL(0xFFFFFF):COL(0xC8C0E0),1);
+        if (i<8) draw_text(value,326,y,0.65f,selected?COL(0x3FE0C5):COL(0x8878A8),1);
+    }
+    draw_text_center("오디오는 즉시 적용 · 그 외 설정은 다음 런부터 적용",VIRT_W/2,230,0.50f,COL(0x8878A8),1);
+    draw_text_center("W/S : 선택 · A/D 또는 Enter : 변경 · Esc : 돌아가기",VIRT_W/2,246,0.45f,COL(0x6F6090),1);
+}
+
+static void draw_weapon_select(void){
+    static const char* modes[WPN_COUNT]={"근접 베기","충전 포탄 폭발","다발 산탄 분사","투척 후 귀환","직선 관통 창","유도탄 연속 발사"};
+    draw_overlay_bg(0.94f);
+    draw_text_center("무기 변경",VIRT_W/2,18,1.1f,COL(0x9FFFF0),1);
+    for (int i=0;i<WPN_COUNT;i++){
+        int col=i%3, row=i/3;
+        float x=30+col*152, y=48+row*96;
+        bool selected=G.title_weapon==i;
+        bool unlocked=(G.meta.unlocked_weapons&(1u<<i))!=0;
+        int cost=weapon_unlock_cost(i);
+        col3 tint=selected?COL(0x3FE0C5):weapon_relic_color(i);
+        draw_quad(x,y,136,82,tint,selected?0.28f:0.11f);
+        draw_text(weapon_defs[i].name,x+8,y+8,0.60f,selected?COL(0xFFFFFF):COL(0xE8E0F8),1);
+        char line[64];
+        snprintf(line,sizeof line,"공격 %.1f · %.2fs",weapon_defs[i].dmg,weapon_defs[i].cooldown);
+        draw_text(line,x+8,y+27,0.42f,COL(0xC8C0E0),1);
+        snprintf(line,sizeof line,"KB %d · %s",weapon_defs[i].kb,modes[i]);
+        draw_text(line,x+8,y+41,0.38f,COL(0xC8C0E0),1);
+        if (i==G.title_weapon) snprintf(line,sizeof line,"현재 선택");
+        else if (unlocked) snprintf(line,sizeof line,"구매 완료");
+        else snprintf(line,sizeof line,"%d바이트",cost);
+        draw_text(line,x+8,y+61,0.48f,unlocked?COL(0x9FFFF0):COL(0xFFD060),1);
+    }
+    draw_text_center("A/D 또는 ←/→ : 선택 · Enter : 구매/장착 · Esc : 돌아가기",VIRT_W/2,242,0.46f,COL(0x8878A8),1);
+}
+
+static void draw_difficulty_select(void){
+    static const char* names[]={"쉬움","보통","어려움"};
+    static const char* notes[]={"적 기본 체력/공격력","적 체력 향상\n개체 수 증가","적 체력/공격력 향상\n적 개체수 증가"};
+    draw_overlay_bg(0.94f);
+    draw_text_center("난이도 선택",VIRT_W/2,50,1.18f,COL(0x9FFFF0),1);
+    for (int i=0;i<3;i++){
+        float x=32+i*152;
+        bool selected=G.menu_sel==i;
+        draw_quad(x,92,132,82,selected?COL(0x3FE0C5):COL(0x302747),selected?0.32f:0.35f);
+        draw_text_center(names[i],x+66,108,0.82f,selected?COL(0xFFFFFF):COL(0xC8C0E0),1);
+        draw_text_center(notes[i],x+66,strchr(notes[i],'\n')?125:135,0.38f,COL(0xC8C0E0),1);
+        if (selected) draw_text_center("ENTER",x+66,157,0.42f,COL(0x3FE0C5),1);
+    }
+    draw_text_center("A/D 또는 ←/→ : 선택 · Enter : 시작 · Esc : 돌아가기",VIRT_W/2,222,0.50f,COL(0x8878A8),1);
+}
+
+typedef struct { const char* name; const char* hp; const char* attack; const char* pattern; } CodexEntry;
+
+static const CodexEntry codex_monsters[] = {
+    {"슬라임", "체력 4", "접촉 0.5", "점프 추격 · 3번째 예측 돌진"},
+    {"박쥐", "체력 2", "접촉 0.5", "부유 후 급강하"},
+    {"망령", "체력 5", "접촉 0.5", "1.5초 전 위치를 추적"},
+    {"추격자", "체력 4", "접촉 0.5", "예고 후 장거리 대시"},
+    {"골렘", "체력 10", "접촉/탄 0.5", "근접 슬램 · 6방향 파편"},
+    {"포탑", "체력 6", "탄 0.5", "연사 · 나선 · 8방향 링"},
+    {"센티널", "체력 12", "접촉 0.5", "느린 추격 후 돌진"},
+    {"드론", "체력 4", "탄 0.5", "3/5갈래 부채꼴 사격"},
+    {"폭격체", "체력 3", "폭발 1.0", "근접 도화선 후 자폭"},
+    {"스나이퍼", "체력 5", "저격탄 1.0", "조준 후 고속 단발 저격"},
+    {"실더", "체력 9", "접촉 0.5", "정면 피해 감소 방패 추격"},
+    {"하이브", "체력 8", "접촉 0.5", "미니 슬라임 소환"},
+};
+static const CodexEntry codex_bosses[] = {
+    {"부패충 ROT", "체력 120", "접촉/탄 1.0", "돌진 · 포자 링 · 소환 · 틈 링"},
+    {"메아리 ECHO", "체력 172.5", "접촉/탄 1.0", "잔상 · 5연사 · 순간이동"},
+    {"단편기 DEFRAG", "체력 195", "접촉/탄 1.0", "위험구역 · 빔 · 배리어"},
+    {"삭제 NULL", "체력 240", "접촉/탄 1.0", "나선 · 암전 이동 · 발악 링"},
+};
+static const char* codex_weapon_modes[WPN_COUNT] = {
+    "근접 베기", "충전 포탄 폭발", "다발 산탄 분사", "투척 후 귀환", "직선 관통 창", "유도탄 연속 발사"
+};
+
+static int codex_entry_count(int section){
+    if (section==0) return (int)(sizeof(codex_monsters)/sizeof(codex_monsters[0]));
+    if (section==1) return (int)(sizeof(codex_bosses)/sizeof(codex_bosses[0]));
+    if (section==2) return WPN_COUNT;
+    return RELIC_COUNT+WR_COUNT;
+}
+static void codex_entry(int section,int index,char* name,size_t name_n,char* left,size_t left_n,
+                        char* right,size_t right_n,char* pattern,size_t pattern_n,col3* color){
+    if (section==0 || section==1){
+        const CodexEntry* entry=section==0?&codex_monsters[index]:&codex_bosses[index];
+        snprintf(name,name_n,"%s",entry->name); snprintf(left,left_n,"%s",entry->hp);
+        snprintf(right,right_n,"%s",entry->attack); snprintf(pattern,pattern_n,"%s",entry->pattern);
+        *color=section==0?COL(0xFFB0CC):COL(0xFF7A3D);
+        return;
+    }
+    if (section==2){
+        const WeaponDef* wd=&weapon_defs[index];
+        snprintf(name,name_n,"%s",wd->name);
+        snprintf(left,left_n,"공격 %.1f · 쿨 %.2fs",wd->dmg,wd->cooldown);
+        snprintf(right,right_n,"%dB · %dKB",weapon_unlock_cost(index),wd->kb);
+        snprintf(pattern,pattern_n,"%s",codex_weapon_modes[index]);
+        *color=weapon_relic_color(index);
+        return;
+    }
+    if (index<RELIC_COUNT){
+        const RelicDef* rd=&relic_defs[index];
+        snprintf(name,name_n,"일반 · %s",rd->name); snprintf(left,left_n,"%dKB",rd->kb);
+        snprintf(right,right_n,"일반 유물"); snprintf(pattern,pattern_n,"%s",rd->desc);
+        *color=COL(0x9FFFF0);
+        return;
+    }
+    const WeaponRelicDef* wr=&weapon_relic_defs[index-RELIC_COUNT];
+    snprintf(name,name_n,"%s · %s",weapon_relic_type_name(wr->weapon),wr->name);
+    snprintf(left,left_n,"%dKB",wr->kb); snprintf(right,right_n,"무기 유물");
+    snprintf(pattern,pattern_n,"%s",wr->desc); *color=weapon_relic_color(wr->weapon);
+}
+
+static void draw_codex(void){
+    static const char* sections[4]={"몬스터","보스","무기","유물"};
+    const int rows=4;
+    int count=codex_entry_count(G.codex_section);
+    int pages=(count+rows-1)/rows;
+    if (G.codex_page>=pages) G.codex_page=pages-1;
+    draw_light_begin(0,0);
+    draw_light_blob(VIRT_W*0.5f,VIRT_H*0.3f,120,COL(0x1D3550),0.55f);
+    draw_glow_begin(0,0);
+    draw_glow_blob(80,56,22,COL(0x7CFCE4),0.45f);
+    draw_scene_begin(0,0);
+    draw_ui_begin();
+    draw_text_center("도감",VIRT_W*0.5f,18,1.25f,COL(0x9FFFF0),1);
+    draw_text_center("쉬움 난이도 기준",VIRT_W*0.5f,37,0.48f,COL(0x8878A8),1);
+    draw_quad(18,54,108,188,COL(0x0B0710),0.94f);
+    draw_quad(20,56,104,184,COL(0x16223A),0.75f);
+    for (int i=0;i<4;i++){
+        float y=76+i*31;
+        bool selected=G.codex_section==i;
+        if (selected) draw_quad(27,y-5,90,21,COL(0x3FE0C5),G.codex_focus==0?0.28f:0.12f);
+        if (selected && G.codex_focus==0) draw_text(">",31,y,0.56f,COL(0x3FE0C5),1);
+        draw_text(sections[i],42,y,0.72f,selected?COL(0xFFFFFF):COL(0x8878A8),1);
+    }
+    draw_text_center("W/S : 구분",72,218,0.42f,COL(0x6F6090),1);
+    draw_quad(138,54,324,188,COL(0x0B0710),0.96f);
+    char head[64];
+    snprintf(head,sizeof(head),"%s  %d/%d",sections[G.codex_section],G.codex_page+1,pages);
+    draw_text(head,151,63,0.78f,COL(0xE8E0F8),1);
+    static const char* column_heads[4]={
+        "이름 · 체력 · 공격력 / 패턴",
+        "이름 · 체력 · 공격력 / 패턴",
+        "이름 · 공격력 · 쿨다운 / 공격 방식",
+        "이름 · 용량 · 유물 분류 / 효과"
+    };
+    draw_text(column_heads[G.codex_section],151,78,0.36f,COL(0x8878A8),1);
+    for (int row=0;row<rows;row++){
+        int index=G.codex_page*rows+row;
+        if (index>=count) break;
+        char name[96], left[64], right[64], pattern[128]; col3 color;
+        codex_entry(G.codex_section,index,name,sizeof name,left,sizeof left,right,sizeof right,pattern,sizeof pattern,&color);
+        float y=91+row*37;
+        bool selected=G.codex_focus==1 && G.codex_detail==index;
+        draw_quad(148,y,304,34,color,selected?0.28f:0.13f);
+        if (selected) draw_text(">",143,y+10,0.48f,COL(0x3FE0C5),1);
+        draw_text(name,154,y+3,0.52f,COL(0xFFF0D0),1);
+        draw_text(left,270,y+5,0.34f,COL(0xC8C0E0),1);
+        draw_text(right,380,y+5,0.32f,color,1);
+        draw_text(pattern,154,y+20,0.40f,COL(0xFFFFFF),1);
+    }
+    draw_text_center(G.codex_focus==0?"Enter : 목록 · W/S : 구분 · Esc : 뒤로":"Enter : 상세 · W/S : 선택 · Esc : 구분",
+                     VIRT_W*0.5f,VIRT_H-16,0.58f,COL(0x8878A8),1);
+}
+
+static int codex_sprite(int section,int index){
+    static const int monster_sprites[] = {
+        SPR_SLIME, SPR_BAT, SPR_WRAITH, SPR_CHASER, SPR_GOLEM, SPR_TURRET,
+        SPR_SENTINEL, SPR_DRONE, SPR_BOMBER, SPR_SNIPER, SPR_SHIELDER, SPR_HIVE
+    };
+    if (section==0) return monster_sprites[index];
+    if (section==1) return SPR_BOSS_ROT+index;
+    if (section==2) return weapon_defs[index].spr;
+    return SPR_RELIC;
+}
+
+static void draw_codex_detail(void){
+    static const char* sections[4]={"몬스터","보스","무기","유물"};
+    int count=codex_entry_count(G.codex_section);
+    if (G.codex_detail>=count) G.codex_detail=count-1;
+    char name[96], left[64], right[64], pattern[128], lines[3][96]; col3 color;
+    codex_entry(G.codex_section,G.codex_detail,name,sizeof name,left,sizeof left,right,sizeof right,pattern,sizeof pattern,&color);
+    codex_detail_effect_lines(pattern,lines);
+    draw_scene_begin(0,0);
+    draw_ui_begin();
+    draw_text_center("도감 상세",VIRT_W*0.5f,18,1.1f,COL(0x9FFFF0),1);
+    draw_text_center(sections[G.codex_section],VIRT_W*0.5f,35,0.48f,color,1);
+    draw_quad(22,52,200,180,COL(0x0B0710),0.96f);
+    draw_quad(28,58,188,168,COL(0x14262F),0.92f);
+    draw_codex_sprite(codex_sprite(G.codex_section,G.codex_detail),122,125,
+                      G.codex_section==1?64.0f:46.0f,G.codex_section==1?64.0f:46.0f,
+                      COL(0xFFFFFF),1);
+    draw_text_center("이미지",122,190,0.48f,COL(0x8878A8),1);
+    draw_quad(238,52,220,180,COL(0x0B0710),0.96f);
+    draw_text(name,252,68,0.90f,COL(0xFFF0D0),1);
+    draw_text(left,252,98,0.58f,COL(0xC8C0E0),1);
+    draw_text(right,252,116,0.58f,color,1);
+    draw_text("패턴 / 효과",252,140,0.48f,COL(0x8878A8),1);
+    for (int i=0;i<3;i++) if (lines[i][0])
+        draw_text(lines[i],252,156+i*23,0.48f,COL(0xFFFFFF),1);
+    char page[48];
+    snprintf(page,sizeof(page),"%d / %d",G.codex_detail+1,count);
+    draw_text_center(page,348,216,0.50f,COL(0x8878A8),1);
+    draw_text_center("A/D : 항목 · Esc : 목록",VIRT_W*0.5f,VIRT_H-16,0.56f,COL(0x8878A8),1);
+}
+
+static void intro_clear_inputs(void){
+    memset(key_held,0,sizeof(key_held));
+    attack_held=false;
+    mouse_present=false;
+}
+static float intro_disk_x(void){
+    return VIRT_W*0.5f-25.0f;
+}
+static float intro_disk_y(float t){
+    float place=clampf(t/2.0f,0,1);
+    place=place*place*(3.0f-2.0f*place);
+    return -42.0f+(117.0f+42.0f)*place;
+}
+static float intro_insert_caption_y(void){ return 196.0f; }
+static bool intro_drive_stop_hold(float t){ return t>=2.15f && t<4.35f; }
+static void intro_begin(void){
+    intro_clear_inputs();
+    G.state=ST_INTRO;
+    G.state_t=0;
+    G.intro_page=0;
+    music_set(-1);
+}
+static void intro_handoff(void){
+    intro_clear_inputs();
+    start_run_after_intro();
+    G.state=ST_PLAY;
+    G.state_t=0;
+    G.fade=1;
+    G.fade_dir=-1;
+}
+static void draw_intro(void){
+    float t=G.state_t;
+    float cx=VIRT_W*0.5f, disk_x=intro_disk_x(), disk_y=intro_disk_y(t);
+    float track=clampf((t-4.25f)/3.15f,0,1);
+    float fragment=clampf((t-8.0f)/3.2f,0,1);
+    (void)intro_pages;
+
+    draw_light_begin(0,0);
+    draw_light_blob(230,128,72,COL(0x253A60),0.32f);
+    if (track>0) draw_light_blob(177+track*130,126,28,COL(0x527FC4),0.18f+0.18f*track);
+    if (fragment>0) draw_light_blob(cx,164+fragment*46,38,COL(0x7CFCE4),0.22f+0.45f*fragment);
+    draw_glow_begin(0,0);
+    if (fragment>0) draw_glow_blob(cx,164+fragment*46,20,COL(0x9FFFF0),0.22f+0.55f*fragment);
+    draw_scene_begin(0,0);
+    draw_quad(0,0,VIRT_W,VIRT_H,COL(0x070A13),1);
+    for (int y=16;y<VIRT_H;y+=16) draw_line(0,y,VIRT_W,y,1,COL(0x18223A),0.22f);
+    draw_quad(116,84,248,92,COL(0x313E59),1);
+    draw_quad(124,92,232,76,COL(0x121B2D),1);
+    draw_line(124,92,356,92,3,COL(0x93A8D0),0.74f);
+    draw_quad(154,108,172,36,COL(0x050912),1);
+    draw_quad(disk_x,disk_y,50,30,COL(0x61759A),1);
+    draw_quad(disk_x+5,disk_y+5,40,16,COL(0x1A2740),1);
+    draw_quad(disk_x+34,disk_y+7,7,7,COL(0x9AB9E4),0.82f);
+    draw_quad(154,132,172,13,COL(0x273753),0.96f);
+    draw_line(154,132,326,132,2,COL(0x7E98C3),0.74f);
+    if (track>0){
+        float sx=169.0f+track*142.0f;
+        draw_line(sx,109,sx,143,3,COL(0xEAF6FF),0.88f);
+        draw_line(sx-8,109,sx-8,143,12,COL(0x1E3865),0.34f);
+        draw_quad(187,114,17,5,COL(0xC3D5F5),0.65f);
+        draw_quad(242,123,23,6,COL(0xFF789E),0.72f);
+        draw_quad(286,116,14,5,COL(0xB7CEF3),0.65f);
+    }
+    if (fragment>0){
+        float fy=158.0f+fragment*55.0f;
+        draw_sprite(SPR_CORE_SHARD,cx,fy,12+fragment*7,15+fragment*8,COL(0xFFFFFF),0.42f+0.58f*fragment,false,t*70.0f);
+        draw_quad(cx-72,219,144,12,COL(0x101A2C),0.92f);
+        draw_quad(cx-66,222,132*fragment,6,COL(0x3FE0C5),0.76f);
+    }
+    draw_ui_begin();
+    draw_text_center("RECOVERY BUFFER // SESSION 01",cx,34,0.64f,COL(0x9BB3D8),0.9f);
+    if (t<2.15f) draw_text_center("INSERT ORIGINAL DISK",cx,intro_insert_caption_y(),0.72f,COL(0xD8E5FF),0.92f);
+    else if (intro_drive_stop_hold(t)) draw_text_center("DRIVE STOP",cx,58,0.84f,COL(0xFFD5E0),1);
+    else if (t<8.0f) draw_text_center("READ PASS // DAMAGED TRACK",cx,58,0.72f,COL(0xB8D4FF),0.94f);
+    else draw_text_center("LAST NORMAL INDEX // TRANSFER",cx,58,0.72f,COL(0xCFFFEF),0.96f);
 }
 
 static void draw_dead(void){
     draw_overlay_bg(0.92f);
     char buf[128];
     draw_text_center("데이터 손상",VIRT_W/2,60,1.8f,COL(0xFF3D7F),1);
-    snprintf(buf,sizeof(buf),"%s에서 흩어졌다",biome_names[G.room.biome]);
+    static const char* enemy_names[E_TYPE_COUNT]={
+        "슬라임", "박쥐", "망령", "추격자", "골렘", "포탑", "센티널", "드론", "폭격체", "스나이퍼", "실더", "하이브",
+        "단편기", "메아리", "디프래그", "NULL", "미니 슬라임", "메아리 잔상"
+    };
+    const char* source=G.death_source_type>=0 && G.death_source_type<E_TYPE_COUNT?
+                       enemy_names[G.death_source_type]:"알 수 없는 공격";
+    snprintf(buf,sizeof(buf),"%s에게 사망하였습니다.",source);
     draw_text_center(buf,VIRT_W/2,100,0.9f,COL(0xC8C0E0),1);
-    snprintf(buf,sizeof(buf),"처치 %d · 시간 %d:%02d · 수집 %d바이트",
-             G.kills,(int)(G.run_time/60),(int)G.run_time%60,G.bytes_run);
+    float progress=clampf((G.room.biome*9.0f+G.room.idx)/35.0f*100.0f,0.0f,100.0f);
+    snprintf(buf,sizeof(buf),"처치 %d마리, 시간 %d:%02d, 진행률 %.2f%%",
+             G.kills,(int)(G.run_time/60),(int)G.run_time%60,progress);
     draw_text_center(buf,VIRT_W/2,124,0.8f,COL(0x8878A8),1);
-    snprintf(buf,sizeof(buf),"이번 런 입금 %d / 보유 %u",G.bytes_run,G.meta.bytes_currency);
+    snprintf(buf,sizeof(buf),"획득한 자원 : %d / 보유 자원 : %u",G.bytes_run,G.meta.bytes_currency);
     draw_text_center(buf,VIRT_W/2,148,0.8f,COL(0xFFD060),1);
     if (G.state_t>1.0f)
-        draw_text_center("R/Enter: 재시작 · Esc: 타이틀",VIRT_W/2,VIRT_H-36,0.75f,COL(0x8878A8),0.5f+0.3f*sinf(G.time*4.0f));
+        draw_text_center("R : 재시작 · Space/Enter/Esc : 타이틀",VIRT_W/2,VIRT_H-36,0.75f,COL(0xE8DFFF),0.95f);
 }
 
 static void draw_pause(void){
     draw_overlay_bg(0.75f);
-    float panel_x=(VIRT_W-208)*0.5f;
-    draw_quad(panel_x-2,42,212,168,COL(0x08050D),0.98f);
-    draw_quad(panel_x,44,208,164,COL(0x0B0710),1.0f);
-    draw_text_center("일시정지",VIRT_W/2,60,1.4f,COL(0x9FFFF0),1);
-    const char* items[4];
-    char scn[40], shake[40];
-    snprintf(scn,sizeof(scn),"스캔라인  %s",G.meta.opt_scanline?"ON":"OFF");
-    snprintf(shake,sizeof(shake),"화면 흔들림  %s",G.meta.opt_shake?"ON":"OFF");
-    items[0]="계속하기"; items[1]=shake; items[2]=scn; items[3]="타이틀로";
-    float y=110;
-    for (int i=0;i<4;i++){
+    float panel_x=16;
+    draw_quad(panel_x-2,12,452,244,COL(0x08050D),0.98f);
+    draw_quad(panel_x,14,448,240,COL(0x0B0710),1.0f);
+    draw_text_center("일시정지",VIRT_W/2,24,1.05f,COL(0x9FFFF0),1);
+    char buf[192];
+    snprintf(buf,sizeof(buf),"무기  %s%s  ·  공격 %.1f",prefix_names[G.pl.weapon.prefix],
+             weapon_defs[G.pl.weapon.type].name,player_attack_damage());
+    draw_text(buf,26,45,0.58f,COL(0xE8E0F8),1);
+    snprintf(buf,sizeof(buf),"HP %.0f/%d  ·  이동 ×%.2f  ·  빛 %.0f",
+             G.pl.hp,G.pl.maxhp,player_speed_mul(),player_light_radius());
+    draw_text(buf,26,60,0.54f,COL(0xC8C0E0),1);
+    snprintf(buf,sizeof(buf),"복구 버퍼 %d/%dKB  ·  대시 %.1fs",player_used_kb(),player_capacity_kb(),
+             fmaxf(0.0f,G.pl.dash_cd));
+    draw_text(buf,26,75,0.54f,COL(0xC8C0E0),1);
+    float y=94;
+    bool has_relic=false;
+    for (int i=0;i<RELIC_COUNT;i++){
+        if (!G.pl.relics[i]) continue;
+        snprintf(buf,sizeof(buf),"유물  %s — %s",relic_defs[i].name,relic_defs[i].desc);
+        draw_text(buf,26,y,0.45f,COL(0xC8B8E8),1);
+        y+=15; has_relic=true;
+    }
+    if (!has_relic){
+        draw_text("보유 일반 유물 없음",26,y,0.45f,COL(0x8878A8),1);
+        y+=15;
+    }
+    bool has_wrelic=false;
+    for (int i=0;i<2;i++){
+        int wr=G.pl.wrelics[i];
+        if (wr<0) continue;
+        snprintf(buf,sizeof(buf),"무기유물  %s — %s",weapon_relic_defs[wr].name,weapon_relic_defs[wr].desc);
+        draw_text(buf,26,y,0.45f,COL(0xFFD060),1);
+        y+=15; has_wrelic=true;
+    }
+    if (!has_wrelic)
+        draw_text("보유 무기 유물 없음",26,y,0.45f,COL(0x8878A8),1);
+    const char* items[3]={"계속하기","설정","타이틀로"};
+    float x[3]={112,240,372};
+    for (int i=0;i<3;i++){
         bool sel=G.menu_sel==i;
-        draw_text_center(items[i],VIRT_W/2,y,0.9f,sel?COL(0xFFFFFF):COL(0x8878A8),1);
-        y+=22;
+        draw_text_center(items[i],x[i],232,0.54f,sel?COL(0xFFFFFF):COL(0x8878A8),1);
     }
 }
 
@@ -886,32 +1603,85 @@ static int memory_coda(void){
 }
 static const char* memory_coda_text(void){
     static const char* kept[MEM_TAG_COUNT]={
-        "용기를 보관한 기록이, 가장 먼저 빛났다.",
-        "인연을 보관한 기록이, 화면 너머로 이어졌다.",
-        "약속을 보관한 기록이, 마지막 줄을 지켜 냈다."
+        "처음 다시 누른 시작 버튼의 용기가, 복구 이미지를 비춘다.",
+        "옆의 박수가 읽힌 흔적과 이어졌다.",
+        "다음에 마저 하자는 약속이 마지막 줄을 지켜 냈다."
     };
     int c=memory_coda();
     if (c>=0 && c<MEM_TAG_COUNT) return kept[c];
-    if (c==MEM_TAG_COUNT) return "버린 기록들 사이에도, 작은 흔적은 남았다.";
+    if (c==MEM_TAG_COUNT) return "버린 기록들 사이에도, 읽히지 않은 흔적은 남았다.";
     return NULL;
 }
 static void draw_ending(void){
     float t=G.state_t;
-    // 상승하는 빛
+    float cx=VIRT_W*0.33f, cy=VIRT_H*0.48f;
+    float spin=t*4.5f;
+    float transfer=G.ending==1?clampf(t/2.0f,0,1):0;
+    bool complete=G.ending==2;
+    bool failed=G.ending==0;
     draw_light_begin(0,0);
-    float rise=clampf(t/10.0f,0,1);
-    draw_light_blob(VIRT_W*0.5f,VIRT_H*(0.8f-rise*0.6f),90+rise*120,COL(0x9FFFF0),0.6f+rise*0.5f);
+    if (!failed) draw_light_blob(cx,cy+4,44,COL(0x7CFCE4),0.20f);
+    if (transfer>0) draw_light_blob(cx+(VIRT_W*0.42f)*transfer,cy-6,16+18*transfer,
+                                     COL(0x9FFFF0),0.22f+0.35f*transfer);
+    if (complete) draw_light_blob(VIRT_W*0.76f,cy-5,50,COL(0x9FFFF0),0.42f);
     draw_glow_begin(0,0);
-    draw_glow_blob(VIRT_W*0.5f,VIRT_H*(0.8f-rise*0.6f),30+rise*30,COL(0xFFFFFF),0.7f);
+    if (!failed) draw_glow_blob(cx,cy+4,14,COL(0xD8FFF5),0.35f);
     draw_scene_begin(0,0);
-    draw_sprite(SPR_FLAME,VIRT_W*0.5f,VIRT_H*(0.8f-rise*0.6f),16+rise*8,16+rise*8,(col3){1.8f,1.8f,1.8f},1,false,0);
+    draw_quad(0,0,VIRT_W,VIRT_H,COL(0x090C18),1);
+    for (int y=14;y<VIRT_H;y+=14)
+        draw_line(0,y,VIRT_W,y,1,COL(0x18213A),0.18f);
+    draw_quad(cx-92,cy-62,184,124,COL(0x3E4C63),1);
+    draw_quad(cx-87,cy-57,174,114,COL(0x162239),1);
+    draw_line(cx-87,cy-57,cx+65,cy-57,2,COL(0xB7C8E5),0.82f);
+    draw_line(cx+65,cy-57,cx+87,cy-37,2,COL(0xB7C8E5),0.82f);
+    draw_line(cx-87,cy-57,cx-87,cy+57,2,COL(0x7891B8),0.82f);
+    draw_line(cx-87,cy+57,cx+87,cy+57,2,COL(0x7891B8),0.82f);
+    draw_line(cx+87,cy-37,cx+87,cy+57,2,COL(0x5E749A),0.82f);
+    draw_ring(cx,cy+8,42,COL(0x55769E),0.78f);
+    draw_ring(cx,cy+8,28,COL(0x6D8DB3),0.72f);
+    draw_ring(cx,cy+8,15,COL(0x4D698A),0.72f);
+    for (int i=0;i<4;i++){
+        float a=spin+i*1.5708f;
+        draw_line(cx+cosf(a)*6,cy+8+sinf(a)*6,cx+cosf(a)*13,cy+8+sinf(a)*13,
+                  2,COL(0xC0D7F5),0.68f);
+    }
+    draw_ring(cx,cy+8,6,COL(0xDCEBFF),0.88f);
+    draw_quad(cx-51,cy-34,102,18,COL(0x070C16),0.98f);
+    draw_line(cx-51,cy-34,cx+51,cy-34,2,COL(0x8EA4C4),0.84f);
+    draw_line(cx-51,cy-16,cx+51,cy-16,1,COL(0x587293),0.84f);
+    draw_quad(cx+3,cy-34,48,18,COL(0x9BA6B7),0.92f);
+    draw_quad(cx+48,cy-19,8,13,COL(0xD4E5F6),0.92f);
+    draw_quad(cx+44,cy-6,16,4,COL(0x6BC4CE),0.82f);
+    float mx=VIRT_W*0.63f, my=cy-46;
+    draw_quad(mx,my,154,108,COL(0x40516C),1);
+    draw_quad(mx+5,my+5,144,88,failed?COL(0x080B12):COL(0x102C38),1);
+    draw_quad(mx+51,my+96,52,5,COL(0x788BA8),0.8f);
+    if (transfer>0)
+        draw_sprite(SPR_CORE_SHARD,cx+(mx+72-cx)*transfer,cy+8+(my+47-cy)*transfer,
+                    10+6*transfer,12+7*transfer,COL(0xFFFFFF),0.55f+0.45f*transfer,false,spin);
+    if (complete){
+        draw_quad(mx+12,my+13,130,50,COL(0x5AD5BE),0.36f);
+        draw_line(mx+16,my+39,mx+138,my+39,1,COL(0xD8FFF5),0.62f);
+    } else if (transfer>0) {
+        draw_quad(mx+12,my+13,72*transfer,50,COL(0x5AD5BE),0.32f+0.22f*transfer);
+    }
     draw_ui_begin();
-    // 4줄 페이즈 텍스트
+    draw_text_center("READ WINDOW  //  FINAL RECOVERY",VIRT_W/2,24,0.62f,COL(0x9FC8FF),0.9f);
+    draw_text_center("READ RETRY 01/03  DONE    02/03  DONE    03/03  DONE",
+                     VIRT_W/2,cy+80,0.47f,COL(0xC8D8F5),0.92f);
+    if (failed){
+        draw_text_center("DRIVE STOP  //  NO RECOVERED IMAGE",mx+77,my+28,0.46f,COL(0xFFB4BD),1);
+        draw_text_center("RECOVERY FAILED",mx+77,my+52,0.68f,COL(0xFF7F91),1);
+    } else if (complete){
+        draw_text_center("IMAGE VERIFIED",mx+77,my+21,0.60f,COL(0xD8FFF5),1);
+        draw_text_center("이 모험을 지우지 마",mx+77,my+49,0.54f,COL(0xFFFFFF),1);
+    } else {
+        draw_text_center("PARTIAL IMAGE READY",mx+77,my+25,0.54f,COL(0x9FFFF0),1);
+        draw_text_center("메모리에 남은 조각",mx+77,my+52,0.50f,COL(0xD8FFF5),1);
+    }
     int line=(int)(t/3.2f);
     if (line>3) line=3;
-    float la=clampf(fmodf(t,3.2f)*1.2f,0,1);
-    if (t>12.8f) la=1;
-    draw_text_center(ending_lines[G.ending][line],VIRT_W/2,90,1.0f,COL(0xE8E0F8),la);
+    draw_text_center(ending_lines[G.ending][line],VIRT_W/2,cy+108,0.82f,COL(0xE8E0F8),1);
     if (t>14.0f){
         char buf[64];
         snprintf(buf,sizeof(buf),"%s END — %s",G.ending==2?"TRUE":(G.ending==0?"BAD":""),ending_names[G.ending]);
@@ -923,17 +1693,17 @@ static void draw_ending(void){
 static void draw_epilogue(void){
     draw_overlay_bg(1);
     float t=G.state_t;
-    const char* epi_good =
-        "검은 화면. 플로피 드라이브 소리가 멎는다.\n\n"
-        "햇빛 드는 방.\n어른의 손이 디스켓을 버리지 않고\n책상 위 작은 액자 옆에 세워 둔다.\n\n"
-        "라벨엔 빛바랜 아이 글씨 —\n\"내 모험. 지우지 말 것.\"\n\n"
-        "모니터에 한 줄이 깜빡인다.\n1,474,560 bytes — 전부 기억함.";
+    const char* epi_complete =
+        "어른은 원본 디스크를 버리지 않고,\n"
+        "복구된 마지막 한 줄을 읽는다.";
+    const char* epi_partial =
+        "읽힌 조각만 별도의 복구 이미지로 남긴다.\n"
+        "어른은 원본 디스크를 건드리지 않는다.";
     const char* epi_bad =
-        "검은 화면. 플로피 드라이브 소리가 멎는다.\n\n"
-        "디스켓은 다시 서랍으로 들어갔다.\n\n"
-        "데이터는 읽히지 않으면, 사라진다.\n\n"
-        "...하지만 어딘가, 아직\n작은 불씨 하나가 남아 있을지도 모른다.";
-    const char* txt = G.ending==0? epi_bad:epi_good;
+        "드라이브가 멎고 원본 디스크는\n"
+        "다시 서랍으로 들어간다.\n\n"
+        "읽히지 않은 기억은 돌아오지 않았다.";
+    const char* txt = G.ending==0?epi_bad:(G.ending==1?epi_partial:epi_complete);
     int show=(int)(t*16.0f);
     char buf[512];
     int n=0; const char* q=txt;
@@ -975,6 +1745,7 @@ static int dbg_f10_prepared;
 static int dbg_f10_done;
 static uint64_t dbg_forced_crng;
 static int dbg_showcase_active;
+static int dbg_options_visual_active;
 static int dbg_showcase_ready;
 static float dbg_showcase_hold_t;
 static int dbg_showcase_weapon_door=-1;
@@ -983,6 +1754,9 @@ static int dbg_showcase_state_after_1s=-1;
 typedef struct { const char* owner; int before, after; } DebugShowcaseTransition;
 static DebugShowcaseTransition dbg_showcase_transitions[16];
 static int dbg_showcase_transition_count;
+
+extern void dd_debug_story_entry_notice_reset(void);
+extern int dd_debug_story_entry_notice_probe(int biome,int idx);
 
 static void debug_telemetry_close(void){
     if (dbg_telemetry_file){
@@ -1123,10 +1897,6 @@ static void debug_drive(float dt){
     switch (G.state){
     case ST_BOOT: G.state=ST_TITLE; G.state_t=0; break;
     case ST_INTRO:
-        if (dbg_intro && G.state_t>4.0f){
-            G.intro_page++; G.state_t=0;
-            if (G.intro_page>=3){ start_run(); G.state=ST_PLAY; G.fade=1; G.fade_dir=-1; }
-        }
         break;
     case ST_TITLE:
         if (dbg_intro){ G.state=ST_INTRO; G.state_t=0; G.intro_page=0; break; }
@@ -1260,6 +2030,9 @@ static void debug_drive(float dt){
             else { chase_t=0; last_bpi=bpi; }
         }
     } break;
+    case ST_RELIC_SWAP:
+        player_confirm_relic_swap(-1);
+        break;
     case ST_FLASHBACK:
         if (dbg_auto && G.fb_t>1.5f){ G.state=ST_PLAY; }
         break;
@@ -1281,6 +2054,7 @@ static void debug_prepare_configured_run(void){
     memset(&G.meta,0,sizeof(G.meta));
     G.meta.unlocked_weapons = 1u<<WPN_SWORD;
     G.meta.opt_scanline = 1; G.meta.opt_shake = 1;
+    G.meta.opt_bgm = 1; G.meta.opt_sfx = 1; G.meta.intro_replay_queued = 1;
     G.difficulty = DBG_CFG.have_difficulty ? DBG_CFG.difficulty : 1;
     G.ngplus = DBG_CFG.have_ngplus && DBG_CFG.ngplus;
     if (DBG_CFG.have_weapon) G.meta.unlocked_weapons |= 1u<<weapon;
@@ -1395,19 +2169,25 @@ static const char* debug_source_sha256(void){
 static void debug_emit_meta_fields(const MetaSave* m){
     printf("{\"bytes_currency\":%u,\"unlocked_weapons\":%u,\"best_biome\":%u,\"runs\":%u,"
            "\"wins\":%u,\"true_clear\":%u,\"opt_scanline\":%u,\"opt_shake\":%u,"
-           "\"last_seed\":%u,\"upg\":[%u,%u,%u,%u,%u]}",
+           "\"last_seed\":%u,\"upg\":[%u,%u,%u,%u,%u],\"intro_seen\":%u,\"intro_replay_queued\":%u,\"opt_bgm\":%u,\"opt_sfx\":%u}",
            m->bytes_currency,m->unlocked_weapons,m->best_biome,m->runs,m->wins,
            m->true_clear,m->opt_scanline,m->opt_shake,m->last_seed,m->upg[0],
-           m->upg[1],m->upg[2],m->upg[3],m->upg[4]);
+           m->upg[1],m->upg[2],m->upg[3],m->upg[4],m->intro_seen,m->intro_replay_queued,m->opt_bgm,m->opt_sfx);
 }
-static int debug_meta_expected(const MetaSave* m,int version){
+static int debug_meta_expected(const MetaSave* m,int version,uint32_t intro_seen,uint32_t intro_replay_queued){
     static const uint32_t v1[9]={123,0x15,2,9,3,1,1,0,12345};
     static const uint32_t v2[9]={456,0x3f,3,12,4,1,1,0,54321};
-    const uint32_t* x=version==1?v1:v2; int i;
+    static const uint32_t v3[9]={789,0x3f,3,15,5,1,1,0,67890};
+    static const uint32_t v4[9]={999,0x3f,3,18,6,1,1,0,98765};
+    const uint32_t* x=version==1?v1:(version==2?v2:(version==3?v3:v4)); int i;
     if(m->bytes_currency!=x[0]||m->unlocked_weapons!=x[1]||m->best_biome!=x[2]||
        m->runs!=x[3]||m->wins!=x[4]||m->true_clear!=x[5]||
        m->opt_scanline!=x[6]||m->opt_shake!=x[7]||m->last_seed!=x[8])return 0;
-    for(i=0;i<5;i++) if(m->upg[i]!=(version==2?(uint32_t)(i+1):0))return 0;
+    for(i=0;i<5;i++) if(m->upg[i]!=(version==1?0:(uint32_t)(i+1)))return 0;
+    if(version>=3 && (m->intro_seen!=intro_seen || m->intro_replay_queued!=intro_replay_queued))return 0;
+    if(version<3 && (m->intro_seen!=0 || m->intro_replay_queued!=0))return 0;
+    if(version<4 && (m->opt_bgm!=1 || m->opt_sfx!=1))return 0;
+    if(version==4 && (m->opt_bgm!=1 || m->opt_sfx!=0))return 0;
     return 1;
 }
 static int debug_meta_is_default(const MetaSave* m){
@@ -1416,53 +2196,59 @@ static int debug_meta_is_default(const MetaSave* m){
            m->runs==0 && m->wins==0 && m->true_clear==0 &&
            m->opt_scanline==1 && m->opt_shake==1 && m->last_seed==0 &&
            m->upg[0]==0 && m->upg[1]==0 && m->upg[2]==0 &&
-           m->upg[3]==0 && m->upg[4]==0 && m->checksum==0;
+           m->upg[3]==0 && m->upg[4]==0 && m->intro_seen==0 &&
+           m->intro_replay_queued==1 && m->opt_bgm==1 && m->opt_sfx==1 && m->checksum==0;
 }
 static void debug_save_fixture(bool reject){
     char path[600],input_sha[65],post_sha[65]; long input_len=0,post_len=0;
-    uint32_t words[17]={0}; int n=DBG_CFG.expect_version==1?12:17;
-    MetaSave loaded,reloaded; uint32_t expected_checksum;
+    uint32_t words[21]={0}; int n=DBG_CFG.expect_version==1?12:(DBG_CFG.expect_version==2?17:(DBG_CFG.expect_version==3?19:21));
+    MetaSave loaded,reloaded; uint32_t expected_checksum=0; int length_valid;
     save_path(path,sizeof path);
 #if defined(_WIN32)
     strncat(path,"\\save.bin",sizeof(path)-strlen(path)-1);
 #else
     strncat(path,"/save.bin",sizeof(path)-strlen(path)-1);
 #endif
-    if(!debug_file_digest(path,input_sha,&input_len) ||
-       input_len!=(long)(n*4) ||
+    if(!debug_file_digest(path,input_sha,&input_len) || input_len<8 ||
        (size_t)input_len>sizeof words*4){
         fprintf(stderr,"{\"error\":\"save-fixture-input\"}\n");exit(2);
     }
     {
         FILE* f=fopen(path,"rb");
-        if(!f||fread(words,4,(size_t)n,f)!=(size_t)n){if(f)fclose(f);
+        if(!f||fread(words,1,(size_t)input_len,f)!=(size_t)input_len){if(f)fclose(f);
             fprintf(stderr,"{\"error\":\"save-fixture-input\"}\n");exit(2);}
         fclose(f);
     }
     if(words[0]!=0xD15C0DE7u || words[1]!=(uint32_t)DBG_CFG.expect_version){
         fprintf(stderr,"{\"error\":\"save-fixture-version\"}\n");exit(2);
     }
-    expected_checksum=debug_wire_checksum(words,n-1);
-    if((reject && words[n-1]==expected_checksum) ||
-       (!reject && words[n-1]!=expected_checksum)){
+    length_valid=input_len==(long)(n*4);
+    if(length_valid) expected_checksum=debug_wire_checksum(words,n-1);
+    if((!reject && (!length_valid || words[n-1]!=expected_checksum)) ||
+       (reject && length_valid && words[n-1]==expected_checksum)){
         fprintf(stderr,"{\"error\":\"save-fixture-checksum\"}\n");exit(2);
     }
     loaded=G.meta;
-    if(!reject && !debug_meta_expected(&loaded,DBG_CFG.expect_version)){
+    if(!reject && !debug_meta_expected(&loaded,DBG_CFG.expect_version,
+                                       DBG_CFG.expect_version>=3?words[16]:0,
+                                       DBG_CFG.expect_version>=3?words[17]:0)){
         fprintf(stderr,"{\"error\":\"save-fixture-fields\"}\n");exit(3);
     }
     printf("{\"schema\":1,\"kind\":\"save_fixture\",\"case\":\"%s\",\"input_sha256\":\"%s\","
            "\"input_length\":%ld,\"load_result\":\"%s\",\"loaded_fields\":",
            reject?"reject":"roundtrip",input_sha,input_len,reject?"rejected":"valid");
     debug_emit_meta_fields(&loaded);
-    printf(",\"pre_save_checksum\":\"%08x\"",words[n-1]);
+    if(length_valid) printf(",\"pre_save_checksum\":\"%08x\"",words[n-1]);
+    else printf(",\"pre_save_checksum\":null");
     if(!reject){
         meta_save();
         memset(&G.meta,0,sizeof G.meta);
         meta_load();
         reloaded=G.meta;
-        if(!debug_file_digest(path,post_sha,&post_len) || post_len!=68 ||
-           !debug_meta_expected(&reloaded,DBG_CFG.expect_version)){
+        if(!debug_file_digest(path,post_sha,&post_len) || post_len!=84 ||
+           !debug_meta_expected(&reloaded,DBG_CFG.expect_version,
+                                DBG_CFG.expect_version>=3?words[16]:0,
+                                DBG_CFG.expect_version>=3?words[17]:0)){
             fprintf(stderr,"{\"error\":\"save-fixture-reload\"}\n");exit(3);
         }
         if (reloaded.bytes_currency!=loaded.bytes_currency ||
@@ -1473,7 +2259,10 @@ static void debug_save_fixture(bool reject){
             reloaded.opt_scanline!=loaded.opt_scanline ||
             reloaded.opt_shake!=loaded.opt_shake ||
             reloaded.last_seed!=loaded.last_seed ||
-            memcmp(reloaded.upg,loaded.upg,sizeof loaded.upg)!=0){
+            memcmp(reloaded.upg,loaded.upg,sizeof loaded.upg)!=0 ||
+            reloaded.intro_seen!=loaded.intro_seen ||
+            reloaded.intro_replay_queued!=loaded.intro_replay_queued ||
+            reloaded.opt_bgm!=loaded.opt_bgm || reloaded.opt_sfx!=loaded.opt_sfx){
             fprintf(stderr,"{\"error\":\"save-fixture-fields\"}\n");exit(3);
         }
         printf(",\"post_save_sha256\":\"%s\",\"post_save_length\":%ld,\"reload_fields\":",
@@ -1529,6 +2318,67 @@ static void debug_fixture_modifiers(void){
     static const char* names[WPN_COUNT]={"sword","cannon","spray","glaive","lance","wand"};
     int w,c; float old_light=G.light_mul; bool old_lum=G.pl.relics[RELIC_LUMINANCE];
     uint32_t old_upg=G.meta.upg[3];
+    int permanent_total=0, weapon_total=0;
+    for (int i=0;i<5;i++) for (int level=0;level<upg_defs[i].max;level++)
+        permanent_total+=upg_level_costs[i][level]?upg_level_costs[i][level]:upg_defs[i].base_cost*(level+1);
+    for (int i=1;i<WPN_COUNT;i++) weapon_total+=weapon_unlock_cost(i);
+    debug_invariant("permanent-upgrade-cost-total",4100,permanent_total);
+    debug_invariant("weapon-unlock-cost-total",1160,weapon_total);
+    G.light_mul=1.0f;
+    G.pl.relics[RELIC_LUMINANCE]=false;
+    G.meta.upg[3]=0;
+    memset(&G.memory,0,sizeof G.memory);
+    debug_invariant("light-shield-base-capacity",0,player_light_shield_limit());
+    G.pl.maxhp=3; G.pl.shield_maxhp=3; G.pl.hp=3.0f; G.pl.shield=0.0f; G.pl.iframes=0;
+    player_take_damage_amount(G.pl.pos,0.5f);
+    debug_invariant("light-shield-base-spills-to-hp",2500,(int)lroundf(G.pl.hp*1000.0f));
+    debug_invariant("light-shield-base-remains-empty",0,(int)lroundf(G.pl.shield*1000.0f));
+    G.pl.iframes=0;
+    player_take_damage_amount(G.pl.pos,1.0f);
+    debug_invariant("light-shield-spills-to-hp",1500,(int)lroundf(G.pl.hp*1000.0f));
+    debug_invariant("light-shield-depleted",0,(int)lroundf(G.pl.shield*1000.0f));
+    player_restore_light_shield();
+    debug_invariant("light-shield-stage-restore",0,(int)lroundf(G.pl.shield*1000.0f));
+    G.meta.upg[3]=4; G.pl.maxhp=3; G.pl.shield_maxhp=3; G.pl.shield=0.0f;
+    player_sync_light_shield();
+    debug_invariant("light-shield-start-bonus-cap",2000,(int)lroundf(player_light_shield_limit()*1000.0f));
+    debug_invariant("light-shield-start-bonus-grant",2000,(int)lroundf(G.pl.shield*1000.0f));
+    G.meta.upg[3]=100; G.pl.maxhp=8; G.pl.shield_maxhp=8; G.pl.shield=5.0f;
+    player_sync_light_shield();
+    debug_invariant("light-shield-five-heart-cap",5,player_light_shield_limit());
+    debug_invariant("light-shield-clamped-to-five",5000,(int)lroundf(G.pl.shield*1000.0f));
+    G.pl.shards=25; G.pl.relics[RELIC_LUMINANCE]=true; G.memory.kept[MEM_TAG_PROMISE]=2;
+    debug_invariant("light-speed-at-full-brightness",600,(int)lroundf(player_speed_mul()*1000.0f));
+    G.pl.shards=0; G.pl.relics[RELIC_LUMINANCE]=false; G.memory.kept[MEM_TAG_PROMISE]=0;
+    G.pl.maxhp=2;
+    player_sync_light_shield();
+    debug_invariant("light-shield-keeps-run-heart-cap",5,player_light_shield_limit());
+    debug_invariant("light-shield-keeps-run-heart-amount",5000,(int)lroundf(G.pl.shield*1000.0f));
+    player_restore_light_shield();
+    debug_invariant("light-shield-full-no-stage-overheal",5000,(int)lroundf(G.pl.shield*1000.0f));
+    G.pl.maxhp=3; G.pl.shield_maxhp=3;
+    G.meta.upg[3]=0;
+    Entity light_target={0};
+    light_target.active=true; light_target.type=E_SLIME; light_target.hp=light_target.maxhp=100.0f;
+    light_target.pos=G.pl.pos;
+    enemy_damage(&light_target,10.0f,G.pl.pos,0,0,false,true,1);
+    debug_invariant("light-damage-center-bonus",88000,(int)lroundf(light_target.hp*1000.0f));
+    memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
+    G.ents[0]=(Entity){true,E_SLIME,G.pl.pos,V2(0,0),1.0f,1.0f,7.0f};
+    enemy_damage(&G.ents[0],2.0f,G.pl.pos,0,0,false,true,2);
+    debug_invariant("one-shot-hit-feedback-hp",0,(int)lroundf(G.enemy_feedback[0].hp*1000.0f));
+    debug_invariant("one-shot-hit-feedback-visible",1,G.enemy_feedback[0].t>0.0f?1:0);
+    memset(G.pickups,0,sizeof G.pickups);
+    G.pickups[0]=(Pickup){true,PK_RELIC,{0,0},RELIC_LUMINANCE,0,G.pl.pos,0};
+    v2 reward_label=reward_label_pos(&G.pickups[0]);
+    int reward_tx=(int)(reward_label.x/TILE), reward_ty=(int)(reward_label.y/TILE);
+    if (reward_tx<1) reward_tx=1;
+    if (reward_tx>G.room.w-2) reward_tx=G.room.w-2;
+    if (reward_ty<1) reward_ty=1;
+    if (reward_ty>G.room.h-2) reward_ty=G.room.h-2;
+    G.room.tiles[reward_ty][reward_tx]=T_WALL;
+    clear_reward_label_obstacles();
+    debug_invariant("reward-label-clears-covered-wall",T_FLOOR,G.room.tiles[reward_ty][reward_tx]);
     printf("{\"schema\":1,\"kind\":\"fixture_start\",\"fixture\":\"modifiers\"}\n");
     for(w=0;w<WPN_COUNT;w++){
         float base=0.0f;
@@ -1576,12 +2426,128 @@ static void debug_fixture_modifiers(void){
         G.meta.upg[3]=(uint32_t)up; G.light_mul=light_mul;
         float observed=player_light_radius();
         if(c==0&&!lum&&!up&&!lm) base_radius=observed;
+        if(c==0&&!lum&&up&&!lm)
+            debug_invariant("lumen-does-not-affect-light",(int)lroundf(base_radius*1000.0f),(int)lroundf(observed*1000.0f));
         (void)base_radius;
         (void)light_mul;
         debug_invariant("production-promise-light-observed",1,isfinite(observed) && observed>=0.0f);
         printf("{\"schema\":1,\"kind\":\"promise\",\"fixture\":\"modifiers\",\"count\":%d,\"luminance\":%d,\"meta_light_upg\":%d,\"light_mul_milli\":%d,\"radius_milli\":%d}\n",c,lum,up,(int)lroundf(light_mul*1000.0f),(int)lroundf(observed*1000.0f));
         fflush(stdout);
     }
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.relics[RELIC_CHECKSUM]=true;
+    G.pl.maxhp=3; G.pl.shield_maxhp=3; G.pl.hp=1.0f; G.pl.heal_timer=45.0f;
+    attack_held=false;
+    update_play(0.1f);
+    debug_invariant("checksum-periodic-half-heal",1500,(int)lroundf(G.pl.hp*1000.0f));
+    Entity impact_target={0};
+    impact_target.active=true; impact_target.type=E_SLIME; impact_target.hp=impact_target.maxhp=100.0f;
+    impact_target.pos=G.pl.pos;
+    G.pl.impact_group=0; G.hitstop=0;
+    enemy_damage(&impact_target,1.0f,G.pl.pos,0,0,false,true,41);
+    debug_invariant("attack-group-first-hitstop",1,G.hitstop>0?1:0);
+    G.hitstop=0;
+    enemy_damage(&impact_target,1.0f,G.pl.pos,0,0,false,true,41);
+    debug_invariant("attack-group-single-hitstop",0,G.hitstop>0?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    Entity sniper={0};
+    sniper.active=true; sniper.type=E_SNIPER; sniper.pos=V2(80,80); sniper.target=V2(180,80); sniper.state=1;
+    update_enemy(&sniper,0,0);
+    debug_invariant("sniper-projectile-speed",562500,(int)lroundf(v2len(G.bullets[0].vel)*1000.0f));
+    debug_invariant("sniper-projectile-damage",2000,(int)lroundf(G.bullets[0].dmg*1000.0f));
+    memset(G.pl.relics,0,sizeof G.pl.relics);
+    for (int i=0;i<4;i++) G.pl.relics[i]=true;
+    G.state=ST_PLAY;
+    G.pickups[0]=(Pickup){true,PK_RELIC,{0,0},RELIC_LUMINANCE,0,G.pl.pos,0};
+    player_try_pickup(&G.pickups[0]);
+    debug_invariant("regular-relic-swap-opens",ST_RELIC_SWAP,G.state);
+    player_confirm_relic_swap(0);
+    debug_invariant("regular-relic-swap-removes-old",0,G.pl.relics[0]?1:0);
+    debug_invariant("regular-relic-swap-adds-new",1,G.pl.relics[RELIC_LUMINANCE]?1:0);
+    G.pl.wrelics[0]=WR_SWORD_WAVE; G.pl.wrelics[1]=WR_SWORD_WHIRL;
+    G.pickups[1]=(Pickup){true,PK_WRELIC,{0,0},WR_CANNON_FRAG,0,G.pl.pos,0};
+    player_try_pickup(&G.pickups[1]);
+    debug_invariant("weapon-relic-swap-opens",ST_RELIC_SWAP,G.state);
+    player_confirm_relic_swap(1);
+    debug_invariant("weapon-relic-swap-replaces-slot",WR_CANNON_FRAG,G.pl.wrelics[1]);
+    debug_invariant("weapon-relic-count",24,WR_COUNT);
+    debug_invariant("weapon-relic-sword-phase-kind",WPN_SWORD,weapon_relic_defs[WR_SWORD_PHASE].weapon);
+    debug_invariant("weapon-relic-wand-delay-kind",WPN_WAND,weapon_relic_defs[WR_WAND_DELAY].weapon);
+    v2 fixture_pos=G.pl.pos;
+    bool fixture_pos_found=false;
+    for (int y=1;y<G.room.h-1&&!fixture_pos_found;y++) for (int x=1;x<G.room.w-1;x++)
+        if (!tile_solid(x,y)){ fixture_pos=V2(x*TILE+8.0f,y*TILE+8.0f); fixture_pos_found=true; break; }
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(80,80); G.pl.hp=3.0f; G.pl.maxhp=5;
+    G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=-1;
+    G.ents[0]=(Entity){true,E_BAT,V2(104,80),V2(0,0),1.0f,4.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,V2(152,80),V2(0,0),20.0f,20.0f,7.0f};
+    enemy_damage(&G.ents[0],10.0f,G.pl.pos,0,0,false,true,91);
+    debug_invariant("sword-phase-steps-to-nearest",152000,(int)lroundf(G.pl.pos.x*1000.0f));
+    debug_invariant("sword-phase-double-damage",1,G.ents[1].hp<18.0f?1:0);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.pos=V2(80,80); G.pl.hp=1.0f; G.pl.maxhp=5;
+    G.pl.wrelics[0]=WR_SWORD_EXECUTE; G.pl.wrelics[1]=-1;
+    G.ents[0]=(Entity){true,E_BAT,V2(104,80),V2(0,0),2.0f,10.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,V2(126,80),V2(0,0),20.0f,20.0f,7.0f};
+    enemy_damage(&G.ents[0],1.0f,G.pl.pos,0,0,false,true,92);
+    debug_invariant("sword-execute-quarter-heal",1250,(int)lroundf(G.pl.hp*1000.0f));
+    debug_invariant("sword-execute-area-damage",1,G.ents[1].hp<20.0f?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_CANNON_FUSE; G.pl.wrelics[1]=-1;
+    G.pl.pos=fixture_pos;
+    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),20.0f,20.0f,7.0f};
+    Bullet* fuse=spawn_bullet(true,1,fixture_pos,V2(0,0),4.0f,0.1f,4.0f,0);
+    fuse->delayed_fuse=true; fuse->attack_group=93;
+    update_bullets(0.2f);
+    debug_invariant("cannon-fuse-arms",1,fuse->active&&fuse->fuse_armed?1:0);
+    update_bullets(0.4f);
+    debug_invariant("cannon-fuse-detonates",1,!fuse->active&&G.ents[0].hp<20.0f?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.weapon.type=WPN_SPRAY; G.pl.aim=V2(1,0); G.pl.attack_cd=0; attack_held=true;
+    G.pl.wrelics[0]=WR_SPRAY_PIERCE; G.pl.wrelics[1]=-1;
+    fire_weapon(0);
+    attack_held=false;
+    int spray_count=0, spray_pierce=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==2){ spray_count++; spray_pierce+=G.bullets[i].pierce; }
+    debug_invariant("spray-pierce-pellet-count",4,spray_count);
+    debug_invariant("spray-pierce-one-target-each",4,spray_pierce);
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_GLAIVE; G.pl.pos=fixture_pos;
+    G.pl.wrelics[0]=WR_GLAIVE_RETURN; G.pl.wrelics[1]=WR_GLAIVE_TRAIL;
+    G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(140,0)),V2(0,0),20.0f,20.0f,7.0f};
+    Bullet* glaive=spawn_bullet(true,3,G.ents[0].pos,V2(0,0),4.0f,2.0f,7.0f,999);
+    glaive->attack_group=94;
+    update_bullets(0.01f);
+    debug_invariant("glaive-return-accelerates",1,glaive->returning&&glaive->dmg>4.9f?1:0);
+    debug_invariant("glaive-trail-damages",1,G.ents[0].hp<20.0f?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_LANCE; G.pl.pos=fixture_pos;
+    G.pl.wrelics[0]=WR_LANCE_PIN; G.pl.wrelics[1]=WR_LANCE_PIERCE;
+    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),20.0f,20.0f,7.0f};
+    Bullet* lance=spawn_bullet(true,4,fixture_pos,V2(0,0),4.0f,1.0f,5.0f,999);
+    lance->bounces=3; lance->attack_group=95;
+    update_bullets(0);
+    debug_invariant("lance-pin-roots",1,G.ents[0].root>1.0f?1:0);
+    debug_invariant("lance-pierce-charges",1,lance->dmg>4.7f&&lance->bounces==2?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_WAND; G.pl.pos=fixture_pos;
+    G.pl.wrelics[0]=WR_WAND_RING; G.pl.wrelics[1]=WR_WAND_DELAY;
+    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),20.0f,20.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),20.0f,20.0f,7.0f};
+    Bullet* wand=spawn_bullet(true,5,fixture_pos,V2(0,0),4.0f,1.0f,3.5f,0);
+    wand->attack_group=96;
+    update_bullets(0);
+    int delayed_count=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==10) delayed_count++;
+    debug_invariant("wand-ring-damages-nearby",1,G.ents[1].hp<20.0f?1:0);
+    debug_invariant("wand-delay-spawns-echo",1,delayed_count);
+    update_bullets(0.4f);
+    debug_invariant("wand-delay-damages-target",1,G.ents[0].hp<16.0f?1:0);
     G.light_mul=old_light; G.pl.relics[RELIC_LUMINANCE]=old_lum; G.meta.upg[3]=old_upg;
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"modifiers\",\"status\":\"pass\"}\n");
 }
@@ -1622,10 +2588,26 @@ static void debug_fixture_haste(void){
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"haste\",\"status\":\"pass\"}\n");
 }
 static void apply_fade_action(void);
+static int resolve_ending_result(uint8_t core_bits);
 static void debug_fixture_endings(void){
     static const char* coda_names[6]={"none","discard-only","courage","kinship","promise","courage-tie"};
     MetaSave meta_before=G.meta; int core_count,coda;
     printf("{\"schema\":1,\"kind\":\"fixture_start\",\"fixture\":\"endings\"}\n");
+    memset(G.pickups,0,sizeof G.pickups);
+    G.pl.cores=0; G.pl.shards=0;
+    G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.5f);
+    spawn_pickup(PK_CORE,G.pl.pos,(Weapon){0,0},0,2);
+    debug_invariant("ending-core-first-pickup",1,player_try_pickup(&G.pickups[0])?1:0);
+    debug_invariant("ending-core-first-bits",1<<2,G.pl.cores);
+    player_drop_shard();
+    debug_invariant("ending-core-drop-clears-bit",0,G.pl.cores);
+    debug_invariant("ending-core-drop-active",1,G.pickups[0].active?1:0);
+    debug_invariant("ending-core-drop-id",2,G.pickups[0].core_id);
+    debug_invariant("ending-core-repickup",1,player_try_pickup(&G.pickups[0])?1:0);
+    debug_invariant("ending-core-repickup-no-duplicate",1<<2,G.pl.cores);
+    debug_invariant("ending-core-repickup-threshold",1,resolve_ending_result(G.pl.cores));
+    printf("{\"schema\":1,\"kind\":\"core_drop_repickup\",\"core_id\":2,\"bits_after_repickup\":%u,\"ending\":%d,\"status\":\"pass\"}\n",
+           G.pl.cores,resolve_ending_result(G.pl.cores));
     for(core_count=0;core_count<=4;core_count++)for(coda=0;coda<6;coda++){
         memset(&G.memory,0,sizeof G.memory);
         G.pl.cores=core_count==4?15:(core_count==0?0:(1<<core_count)-1);
@@ -1634,7 +2616,7 @@ static void debug_fixture_endings(void){
         if(coda==3)G.memory.kept[MEM_TAG_KINSHIP]=1;
         if(coda==4)G.memory.kept[MEM_TAG_PROMISE]=1;
         if(coda==5){G.memory.kept[MEM_TAG_COURAGE]=1;G.memory.kept[MEM_TAG_KINSHIP]=1;}
-        G.meta=meta_before; G.room.biome=3; G.fade_next_state=-3;
+        G.meta=meta_before; G.ngplus=false; G.room.biome=3; G.fade_next_state=-3;
         G.bytes_run=0; G.pl.shards=0; G.state=ST_PLAY;
         apply_fade_action();
         int ending=G.ending;
@@ -1645,12 +2627,13 @@ static void debug_fixture_endings(void){
         debug_invariant("ending-wins",1,(int)G.meta.wins-(int)meta_before.wins);
         debug_invariant("ending-true-clear",core_count==4?1:0,
                         (int)G.meta.true_clear-(int)meta_before.true_clear);
+        debug_invariant("ending-ngplus-unlock",core_count==4?1:0,G.ngplus?1:0);
         debug_invariant("ending-unlocks",0,
                         G.meta.unlocked_weapons!=meta_before.unlocked_weapons);
-        printf("{\"schema\":1,\"kind\":\"ending\",\"fixture\":\"endings\",\"cores\":%d,\"ending\":%d,\"coda\":\"%s\",\"wins_delta\":%d,\"true_clear_delta\":%d,\"unlocks_changed\":%d,\"ngplus_changed\":0}\n",
+        printf("{\"schema\":1,\"kind\":\"ending\",\"fixture\":\"endings\",\"cores\":%d,\"ending\":%d,\"coda\":\"%s\",\"wins_delta\":%d,\"true_clear_delta\":%d,\"unlocks_changed\":%d,\"ngplus_changed\":0,\"ngplus_unlocked\":%d}\n",
                core_count,ending,coda_names[coda],(int)G.meta.wins-(int)meta_before.wins,
                (int)G.meta.true_clear-(int)meta_before.true_clear,
-               G.meta.unlocked_weapons!=meta_before.unlocked_weapons);
+               G.meta.unlocked_weapons!=meta_before.unlocked_weapons,G.ngplus?1:0);
     }
     G.meta=meta_before;
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"endings\",\"status\":\"pass\",\"major_mapping\":\"0=bad,1-3=standard,4=true\"}\n");
@@ -1687,7 +2670,7 @@ static void debug_init_forced_entity(void){
     memset(G.ents,0,sizeof G.ents);memset(G.bullets,0,sizeof G.bullets);memset(G.zones,0,sizeof G.zones);
     int slot=DBG_CFG.force_target[0],type=DBG_CFG.force_target[1];
     if(type!=E_SLIME&&type!=E_BOMBER){fprintf(stderr,"{\"error\":\"unsupported-forced-type\"}\n");exit(2);}
-    Entity* e=&G.ents[slot];float scale=1.0f+G.difficulty*0.3f+(G.ngplus?0.5f:0.0f);
+    Entity* e=&G.ents[slot];float scale=1.0f+G.difficulty*0.5f+(G.ngplus?0.5f:0.0f);
     e->active=true;e->type=type;e->elite=DBG_CFG.force_target[2]!=0;e->event_trait=(uint8_t)DBG_CFG.force_target[3];
     e->pos=V2(bx*TILE+TILE*0.5f,by*TILE+TILE*0.5f);e->vel=V2(0,0);e->spawn_t=0;e->slow=e->burn=e->flash=0;
     e->state=e->phase=0;e->t0=e->t1=e->t2=e->t3=0;e->facing_left=false;e->face=0;e->event_bonus=0;
@@ -1783,10 +2766,344 @@ static void debug_dispatch_key(int key, bool repeat){
     game_event(&ev);
 }
 void dd_debug_send_key(int key, bool repeat){ debug_dispatch_key(key,repeat); }
+static void debug_dispatch_mouse(void){
+    sapp_event ev={0};
+    ev.type=SAPP_EVENTTYPE_MOUSE_DOWN;
+    game_event(&ev);
+    ev.type=SAPP_EVENTTYPE_MOUSE_UP;
+    game_event(&ev);
+}
 static const char* debug_state_name(int state);
+static int resolve_ending_result(uint8_t core_bits);
+static const char* debug_opening_checkpoint_name(void){
+    static const char* names[]={"insert","seek","retry","recover","transfer","title-handoff","skip-key","skip-mouse","wake","scan","reveal","title-flow"};
+    return names[DBG_CFG.opening_checkpoint-1];
+}
+static int debug_opening_target_ms(void){
+    static const int targets[]={1800,3600,7600,9600,14000,0,0,0,1800,5600,10800,0};
+    if (DBG_CFG.opening_checkpoint==3){
+        const char* phase=getenv("DD_DEBUG_RETRY_PHASE");
+        if (phase && !strcmp(phase,"1")) return 5400;
+        if (phase && !strcmp(phase,"2")) return 6300;
+        if (phase && !strcmp(phase,"3")) return 7200;
+    }
+    return targets[DBG_CFG.opening_checkpoint-1];
+}
+static void debug_opening_record_transition(int before){
+    if (before==G.state || dbg_opening_transition_count>=12) return;
+    dbg_opening_transitions[dbg_opening_transition_count++]=(DebugOpeningTransition){before,G.state};
+}
+static void debug_opening_emit(void){
+    static const char* beat_names[]={"wake","scan","reveal","title-handoff"};
+    int state_t_ms=(int)lroundf(G.state_t*1000.0f);
+    const char* active=G.state==ST_BOOT?boot_beat_name(G.state_t):"title-handoff";
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-opening\",\"checkpoint\":\"%s\",\"recovery_result\":\"not-applicable\",\"retry_count\":3,\"writeback\":false,\"profile_unchanged\":true,\"meta_save_events\":%d,\"fixture_ready\":true,\"core_mapping\":{\"0\":\"bad\",\"1\":\"standard\",\"2\":\"standard\",\"3\":\"standard\",\"4\":\"true\"},\"core_count\":0,\"state\":\"%s\",\"state_t_ms\":%d,\"active_boot_beat\":\"%s\",\"natural_timeout\":%s,\"handoff_at_ms\":%d,\"skip_method\":\"%s\",\"skip_same_frame\":%s,\"visited_boot_beats\":[",
+           debug_source_sha256(),debug_opening_checkpoint_name(),dd_debug_meta_save_events(),debug_state_name(G.state),state_t_ms,active,
+           dbg_opening_natural_timeout?"true":"false",dbg_opening_handoff_at_ms,dbg_opening_skip_method,
+           dbg_opening_skip_same_frame?"true":"false");
+    for (int i=0,shown=0;i<4;i++) if (dbg_opening_visited&(1<<i))
+        printf("%s\"%s\"",shown++?",":"",beat_names[i]);
+    printf("],\"transitions\":[");
+    for (int i=0;i<dbg_opening_transition_count;i++)
+        printf("%s{\"from\":\"%s\",\"to\":\"%s\"}",i?",":"",
+               debug_state_name(dbg_opening_transitions[i].before),
+               debug_state_name(dbg_opening_transitions[i].after));
+    printf("],\"entered_play\":%s}\n",dbg_opening_entered_play?"true":"false");
+    fflush(stdout);
+}
+static void debug_prepare_opening_fixture(void){
+    debug_invariant("opening-clean-profile",1,dd_debug_clean_profile_active()?1:0);
+    debug_invariant("opening-meta-load-suppressed",0,(int)G.meta.magic);
+    dd_debug_reset_meta_save_events();
+    meta_save();
+    debug_invariant("opening-meta-save-events",1,dd_debug_meta_save_events());
+    if (DBG_CFG.opening_checkpoint==12) dd_debug_reset_meta_save_events();
+    dbg_opening_active=1;
+    dbg_opening_frozen=0;
+    dbg_opening_emitted=0;
+    dbg_opening_ready=0;
+    dbg_opening_rendered=0;
+    dbg_opening_hold_t=0;
+    dbg_opening_visited=0;
+    dbg_opening_natural_timeout=0;
+    dbg_opening_handoff_at_ms=-1;
+    dbg_opening_skip_method="none";
+    dbg_opening_skip_same_frame=0;
+    dbg_opening_entered_play=0;
+    dbg_opening_flow_step=0;
+    dbg_opening_transition_count=0;
+    debug_invariant("opening-start-state",ST_BOOT,G.state);
+}
+static void debug_opening_tick(float dt){
+    int checkpoint;
+    if (!dbg_opening_active) return;
+    checkpoint=DBG_CFG.opening_checkpoint;
+    if (G.state==ST_BOOT) dbg_opening_visited|=1<<boot_beat_index(G.state_t);
+    if (!dbg_opening_emitted){
+        if (dbg_opening_ready && dbg_opening_rendered){
+            debug_opening_emit();
+            dbg_opening_emitted=1;
+        } else if ((checkpoint>=1 && checkpoint<=5) || (checkpoint>=9 && checkpoint<=11)){
+            if (G.state==ST_BOOT && G.state_t*1000.0f>=debug_opening_target_ms()){
+                dbg_opening_frozen=1;
+                dbg_opening_ready=1;
+                dbg_opening_rendered=0;
+            }
+        } else if (checkpoint==6){
+            if (G.state==ST_TITLE && dbg_opening_natural_timeout){
+                debug_invariant("opening-natural-handoff-ms",15000,dbg_opening_handoff_at_ms);
+                debug_invariant("opening-natural-beats",15,dbg_opening_visited);
+                dbg_opening_ready=1;
+                dbg_opening_rendered=0;
+            }
+        } else if (checkpoint==7 || checkpoint==8){
+            if (dbg_opening_flow_step==0){
+                int before=G.state;
+                if (checkpoint==7) debug_dispatch_key(SAPP_KEYCODE_SPACE,false);
+                else debug_dispatch_mouse();
+                debug_opening_record_transition(before);
+                debug_invariant("opening-skip-title",ST_TITLE,G.state);
+                debug_invariant("opening-skip-same-frame",1,dbg_opening_skip_same_frame);
+                debug_invariant("opening-skip-no-play",0,dbg_opening_entered_play);
+                dbg_opening_flow_step=1;
+            } else if (G.state==ST_TITLE && G.state_t>=0.75f){
+                dbg_opening_ready=1;
+                dbg_opening_rendered=0;
+            }
+        } else if (checkpoint==12){
+            int before;
+            if (dbg_opening_flow_step==0){
+                before=G.state;
+                debug_dispatch_key(SAPP_KEYCODE_SPACE,false);
+                debug_opening_record_transition(before);
+                debug_invariant("opening-flow-title",ST_TITLE,G.state);
+                dbg_opening_flow_step++;
+            } else if (dbg_opening_flow_step==1){
+                before=G.state;
+                debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+                debug_invariant("opening-flow-difficulty",ST_DIFFICULTY_SELECT,G.state);
+                debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+                debug_opening_record_transition(before);
+                debug_invariant("opening-flow-intro",ST_INTRO,G.state);
+                dbg_opening_flow_step++;
+            } else if (dbg_opening_flow_step<=4){
+                before=G.state;
+                debug_dispatch_key(SAPP_KEYCODE_SPACE,false);
+                debug_opening_record_transition(before);
+                dbg_opening_flow_step++;
+                if (G.state==ST_PLAY){
+                    dbg_opening_entered_play=1;
+                    debug_invariant("opening-flow-meta-save-events",1,dd_debug_meta_save_events());
+                    dbg_opening_ready=1;
+                    dbg_opening_rendered=0;
+                }
+            }
+        }
+    }
+    if (dbg_opening_emitted){
+        dbg_opening_hold_t+=dt;
+        if (dbg_opening_hold_t*1000.0f>=DBG_CFG.hold_ms) sapp_request_quit();
+    }
+}
+static const char* debug_start_intro_checkpoint_name(void){
+    static const char* names[]={"first-run","placement","latch","drive-stop-hold","track","fragment","handoff","repeat-bypass","queued-replay","post-replay-bypass"};
+    return names[DBG_CFG.start_intro_checkpoint-1];
+}
+static int debug_start_intro_target_ms(void){
+    static const int targets[]={800,1000,1200,3000,5700,9300,0,0,1000,0};
+    return targets[DBG_CFG.start_intro_checkpoint-1];
+}
+static void debug_start_intro_emit(void){
+    float t=G.state_t;
+    float disk_x=intro_disk_x();
+    float disk_y=intro_disk_y(t);
+    float disk_center_x=disk_x+25.0f;
+    float drive_center_x=VIRT_W*0.5f;
+    int drive_hold=intro_drive_stop_hold(t)?1:0;
+    int disk_inside=disk_x>=154.0f && disk_x+50.0f<=326.0f;
+    int lip_occludes=disk_y+30.0f>132.0f && disk_y<145.0f;
+    int centered=fabsf(disk_center_x-drive_center_x)<=0.01f;
+    int descends=intro_disk_y(0.0f)<intro_disk_y(0.5f) &&
+                 intro_disk_y(0.5f)<intro_disk_y(1.0f) &&
+                 intro_disk_y(1.0f)<intro_disk_y(2.0f);
+    int caption_clear=disk_y+30.0f<intro_insert_caption_y()-8.0f;
+    if (DBG_CFG.start_intro_checkpoint==2){
+        debug_invariant("intro-placement-center-x",0,(int)lroundf((disk_center_x-drive_center_x)*1000.0f));
+        debug_invariant("intro-placement-centered",1,centered);
+        debug_invariant("intro-placement-descends",1,descends);
+        debug_invariant("intro-placement-caption-clear",1,caption_clear);
+    }
+    if (DBG_CFG.start_intro_checkpoint==4){
+        debug_invariant("intro-drive-stop-start-y",117000,(int)lroundf(intro_disk_y(2.15f)*1000.0f));
+        debug_invariant("intro-drive-stop-end-y",117000,(int)lroundf(intro_disk_y(4.349f)*1000.0f));
+        debug_invariant("intro-drive-stop-held",1,drive_hold);
+        debug_invariant("intro-drive-stop-current-y",117000,(int)lroundf(disk_y*1000.0f));
+        debug_invariant("intro-drive-stop-center-x",0,(int)lroundf((disk_center_x-drive_center_x)*1000.0f));
+        debug_invariant("intro-drive-stop-centered",1,centered);
+        debug_invariant("intro-drive-stop-inside",1,disk_inside);
+        debug_invariant("intro-drive-stop-occluded",1,lip_occludes);
+    }
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-start-intro\",\"checkpoint\":\"%s\",\"fixture_ready\":true,\"state\":\"%s\",\"state_t_ms\":%d,\"intro_seen\":%u,\"intro_replay_queued\":%u,\"meta_save_events\":%d,\"input_latches_clear\":%s,\"esc_ignored\":%s,\"input_state_unchanged\":%s,\"drive_stop_hold\":%s,\"disk_x_milli\":%d,\"disk_y_milli\":%d,\"disk_center_x_milli\":%d,\"drive_center_x_milli\":%d,\"insert_caption_y_milli\":196000,\"insert_caption_clear\":%s,\"insertion_start_y_milli\":-42000,\"insertion_end_y_milli\":117000,\"top_down_descent\":%s,\"disk_inside_drive\":%s,\"drive_lip_occludes\":%s,\"replay_complete\":%s}\n",
+           debug_source_sha256(),debug_start_intro_checkpoint_name(),debug_state_name(G.state),
+           (int)lroundf(t*1000.0f),G.meta.intro_seen,G.meta.intro_replay_queued,
+           dd_debug_meta_save_events(),dbg_start_intro_latches_clear?"true":"false",
+           dbg_start_intro_esc_ignored?"true":"false",dbg_start_intro_input_unchanged?"true":"false",
+           drive_hold?"true":"false",(int)lroundf(disk_x*1000.0f),(int)lroundf(disk_y*1000.0f),
+           (int)lroundf(disk_center_x*1000.0f),(int)lroundf(drive_center_x*1000.0f),caption_clear?"true":"false",descends?"true":"false",
+           disk_inside?"true":"false",lip_occludes?"true":"false",
+           dbg_start_intro_replay_complete?"true":"false");
+    fflush(stdout);
+}
+static void debug_prepare_start_intro_fixture(void){
+    int checkpoint=DBG_CFG.start_intro_checkpoint;
+    debug_invariant("start-intro-clean-profile",1,dd_debug_clean_profile_active()?1:0);
+    dd_debug_reset_meta_save_events();
+    dbg_start_intro_active=1;
+    dbg_start_intro_frozen=0;
+    dbg_start_intro_emitted=0;
+    dbg_start_intro_hold_t=0;
+    dbg_start_intro_phase=0;
+    dbg_start_intro_latches_clear=0;
+    dbg_start_intro_replay_complete=0;
+    dbg_start_intro_esc_ignored=0;
+    dbg_start_intro_input_unchanged=0;
+    G.state=ST_TITLE;
+    G.state_t=0;
+    G.menu_sel=0;
+    G.meta.intro_seen=(checkpoint==8 || checkpoint==9 || checkpoint==10)?1u:0u;
+    G.meta.intro_replay_queued=(checkpoint==9 || checkpoint==10)?1u:0u;
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    debug_invariant("intro-difficulty-entry",ST_DIFFICULTY_SELECT,G.state);
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    if (checkpoint==8){
+        debug_invariant("intro-repeat-bypass",ST_PLAY,G.state);
+        debug_invariant("intro-repeat-bypass-save",1,dd_debug_meta_save_events());
+        dbg_start_intro_latches_clear=!key_held[SAPP_KEYCODE_W]&&!key_held[SAPP_KEYCODE_SPACE]&&!attack_held&&!mouse_present;
+        debug_invariant("intro-repeat-bypass-latches",1,dbg_start_intro_latches_clear);
+    } else {
+        debug_invariant("intro-first-entry",ST_INTRO,G.state);
+        debug_invariant("intro-entry-no-save",0,dd_debug_meta_save_events());
+    }
+}
+static void debug_start_intro_tick(float dt){
+    int checkpoint;
+    if (!dbg_start_intro_active || dbg_start_intro_emitted) goto hold;
+    checkpoint=DBG_CFG.start_intro_checkpoint;
+    if (checkpoint==3 && dbg_start_intro_phase==0 && G.state==ST_INTRO){
+        sapp_event ev={0};
+        int state_before=G.state, saves_before=dd_debug_meta_save_events(), player_bullets_before=0;
+        float state_t_before=G.state_t;
+        v2 pos_before=G.pl.pos;
+        for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].from_player) player_bullets_before++;
+        ev.type=SAPP_EVENTTYPE_KEY_DOWN; ev.key_code=SAPP_KEYCODE_ESCAPE; game_event(&ev);
+        ev.key_code=SAPP_KEYCODE_W; game_event(&ev);
+        ev.key_code=SAPP_KEYCODE_SPACE; game_event(&ev);
+        ev.type=SAPP_EVENTTYPE_MOUSE_DOWN; game_event(&ev);
+        int player_bullets_after=0;
+        for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].from_player) player_bullets_after++;
+        dbg_start_intro_latches_clear=!key_held[SAPP_KEYCODE_ESCAPE]&&!key_held[SAPP_KEYCODE_W]&&!key_held[SAPP_KEYCODE_SPACE]&&!attack_held&&!mouse_present;
+        dbg_start_intro_esc_ignored=G.state==ST_INTRO&&G.state==state_before&&G.state_t==state_t_before;
+        dbg_start_intro_input_unchanged=dbg_start_intro_esc_ignored&&
+            G.pl.pos.x==pos_before.x&&G.pl.pos.y==pos_before.y&&
+            player_bullets_after==player_bullets_before&&dd_debug_meta_save_events()==saves_before;
+        debug_invariant("intro-esc-ignored",1,dbg_start_intro_esc_ignored);
+        debug_invariant("intro-input-state-unchanged",1,dbg_start_intro_input_unchanged);
+        debug_invariant("intro-latch-ignored",1,dbg_start_intro_latches_clear);
+        dbg_start_intro_phase=1;
+    }
+    if (checkpoint==7){
+        if (G.state==ST_PLAY){
+            debug_invariant("intro-handoff-save",1,dd_debug_meta_save_events());
+            debug_invariant("intro-handoff-seen",1,(int)G.meta.intro_seen);
+            debug_invariant("intro-handoff-queue",0,(int)G.meta.intro_replay_queued);
+            dbg_start_intro_latches_clear=!attack_held&&!mouse_present;
+            dbg_start_intro_emitted=1;
+            debug_start_intro_emit();
+        }
+    } else if (checkpoint==10){
+        if (dbg_start_intro_phase==0 && G.state==ST_PLAY){
+            debug_invariant("intro-replay-handoff-save",1,dd_debug_meta_save_events());
+            dbg_start_intro_latches_clear=!key_held[SAPP_KEYCODE_W]&&!key_held[SAPP_KEYCODE_SPACE]&&!attack_held&&!mouse_present;
+            debug_invariant("intro-replay-latches",1,dbg_start_intro_latches_clear);
+            G.state=ST_TITLE; G.state_t=0; G.menu_sel=0;
+            debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+            debug_invariant("intro-post-replay-difficulty",ST_DIFFICULTY_SELECT,G.state);
+            debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+            debug_invariant("intro-post-replay-bypass",ST_PLAY,G.state);
+            debug_invariant("intro-post-replay-save",2,dd_debug_meta_save_events());
+            dbg_start_intro_replay_complete=1;
+            dbg_start_intro_phase=1;
+            dbg_start_intro_emitted=1;
+            debug_start_intro_emit();
+        }
+    } else if (checkpoint==8){
+        dbg_start_intro_emitted=1;
+        debug_start_intro_emit();
+    } else if (G.state==ST_INTRO && G.state_t*1000.0f>=debug_start_intro_target_ms()){
+        if (checkpoint==9) debug_invariant("intro-queued-replay",1,(int)G.meta.intro_replay_queued);
+        dbg_start_intro_latches_clear=!attack_held&&!mouse_present;
+        dbg_start_intro_frozen=1;
+        dbg_start_intro_emitted=1;
+        debug_start_intro_emit();
+    }
+hold:
+    if (dbg_start_intro_emitted){
+        dbg_start_intro_hold_t+=dt;
+        if (dbg_start_intro_hold_t*1000.0f>=DBG_CFG.hold_ms) sapp_request_quit();
+    }
+}
+static const char* debug_ending_checkpoint_name(void){
+    static const char* names[]={"recovery-failed","partial-recovery","complete-recovery"};
+    return names[DBG_CFG.ending_checkpoint-1];
+}
+static const char* debug_recovery_result_name(int result){
+    return result==0?"bad":result==1?"standard":"true";
+}
+static void debug_prepare_ending_fixture(void){
+    int core_bits=DBG_CFG.core_count==4?15:(1<<DBG_CFG.core_count)-1;
+    debug_invariant("ending-clean-profile",1,dd_debug_clean_profile_active()?1:0);
+    debug_invariant("ending-meta-load-suppressed",0,(int)G.meta.magic);
+    G.pl.cores=(uint8_t)core_bits;
+    G.room.biome=3;
+    G.fade_next_state=-3;
+    G.bytes_run=0;
+    G.pl.shards=0;
+    G.state=ST_PLAY;
+    dd_debug_reset_meta_save_events();
+    apply_fade_action();
+    dbg_ending_result=resolve_ending_result(G.pl.cores);
+    dbg_ending_core_count=DBG_CFG.core_count;
+    debug_invariant("ending-result",dbg_ending_result,G.ending);
+    debug_invariant("ending-state",ST_ENDING,G.state);
+    debug_invariant("ending-meta-save-events",1,dd_debug_meta_save_events());
+    dbg_ending_active=1;
+    dbg_ending_rendered=0;
+    dbg_ending_emitted=0;
+    dbg_ending_hold_t=0;
+}
+static void debug_ending_tick(float dt){
+    if (!dbg_ending_active) return;
+    if (!dbg_ending_emitted && dbg_ending_rendered){
+        printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-ending\",\"checkpoint\":\"%s\",\"recovery_result\":\"%s\",\"retry_count\":3,\"writeback\":false,\"profile_unchanged\":true,\"clean_profile_active\":true,\"meta_load_suppressed\":true,\"meta_save_events\":%d,\"fixture_ready\":true,\"core_mapping\":{\"0\":\"bad\",\"1\":\"standard\",\"2\":\"standard\",\"3\":\"standard\",\"4\":\"true\"},\"core_count\":%d,\"state\":\"%s\",\"entered_play\":false}\n",
+               debug_source_sha256(),debug_ending_checkpoint_name(),debug_recovery_result_name(dbg_ending_result),
+               dd_debug_meta_save_events(),dbg_ending_core_count,debug_state_name(G.state));
+        fflush(stdout);
+        dbg_ending_emitted=1;
+    }
+    if (dbg_ending_emitted){
+        dbg_ending_hold_t+=dt;
+        if (dbg_ending_hold_t*1000.0f>=DBG_CFG.hold_ms) sapp_request_quit();
+    }
+}
 static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==1) return "death";
     if (DBG_CFG.showcase_checkpoint==2) return "door";
+    if (DBG_CFG.showcase_checkpoint==4) return "hit";
+    if (DBG_CFG.showcase_checkpoint==5) return "boss-reward";
+    if (DBG_CFG.showcase_checkpoint==6) return "relic-swap";
+    if (DBG_CFG.showcase_checkpoint==7) return "memory-event";
+    if (DBG_CFG.showcase_checkpoint==8) return "boss-intro";
+    if (DBG_CFG.showcase_checkpoint==9) return "core-flashback";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -1795,29 +3112,42 @@ static void debug_showcase_record_transition(const char* owner,int before){
 }
 static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==1) return ST_DEAD;
-    if (DBG_CFG.showcase_checkpoint==2) return ST_PLAY;
+    if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
+    if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
+        DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8) return ST_PLAY;
+    if (DBG_CFG.showcase_checkpoint==6) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
 static void debug_showcase_emit(void){
     const char* label="";
+    const char* display_label="";
     int doors_cleared=0, weapon_label_camera_visible=0;
+    int player_damage_visible=0, player_damage_value=0, player_damage_crit=0;
     if (DBG_CFG.showcase_checkpoint==2){
         v2 cam=play_camera(&G.room);
         int dn=dbg_showcase_weapon_door;
         label=promise_label(G.room.door_promise[dn]);
+        display_label=branch_promise_display_label(G.room.door_promise[dn]);
         v2 label_pos=branch_promise_label_pos((G.room.door_x[dn]+(G.room.door_dir[dn]==DIR_L?1:G.room.door_dir[dn]==DIR_R?-1:0))*TILE+8,
                                                (G.room.door_y[dn]+(G.room.door_dir[dn]==DIR_U?1:G.room.door_dir[dn]==DIR_D?-1:0))*TILE+8,
-                                               cam.x,cam.y,label);
+                                               cam.x,cam.y,display_label);
         for (int i=0;i<G.room.door_count;i++)
             if (G.room.tiles[G.room.door_y[i]][G.room.door_x[i]]==T_DOOR_OPEN) doors_cleared++;
-        weapon_label_camera_visible=label_pos.x-text_width(label,0.42f)*0.5f>=cam.x &&
-                                    label_pos.x+text_width(label,0.42f)*0.5f<=cam.x+VIRT_W &&
-                                    label_pos.y>=cam.y && label_pos.y<=cam.y+VIRT_H;
+        weapon_label_camera_visible=label_pos.x-text_width(display_label,0.42f)*0.5f>=0 &&
+                                    label_pos.x+text_width(display_label,0.42f)*0.5f<=VIRT_W &&
+                                    label_pos.y>=0 && label_pos.y<=VIRT_H;
     }
-    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-ui-showcase\",\"checkpoint\":\"%s\",\"state\":\"%s\",\"state_after_drive\":\"%s\",\"state_after_1s\":\"%s\",\"frames_after_drive\":%d,\"hold_ms\":%d,\"door_label\":\"%s\",\"door_count\":%d,\"doors_cleared\":%d,\"weapon_door_index\":%d,\"weapon_label_camera_visible\":%d,\"pause_panel_opaque\":%d,\"pause_panel_x\":%d,\"pause_panel_y\":%d,\"pause_panel_w\":%d,\"pause_panel_h\":%d,\"menu_first_y\":%d,\"menu_last_y\":%d,\"menu_selected\":%d,\"transitions\":[",
+    if (DBG_CFG.showcase_checkpoint==4){
+        Entity* e=&G.ents[0];
+        player_damage_visible=e->player_damaged && e->player_damage_t>0;
+        player_damage_value=(int)lroundf(e->player_damage);
+        player_damage_crit=e->player_damage_crit;
+    }
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-ui-showcase\",\"checkpoint\":\"%s\",\"fixture_ready\":true,\"state\":\"%s\",\"state_after_drive\":\"%s\",\"state_after_1s\":\"%s\",\"frames_after_drive\":%d,\"hold_ms\":%d,\"door_label\":\"%s\",\"door_count\":%d,\"doors_cleared\":%d,\"weapon_door_index\":%d,\"weapon_label_camera_visible\":%d,\"player_damage_visible\":%d,\"player_damage_value\":%d,\"player_damage_crit\":%d,\"pause_panel_opaque\":%d,\"pause_panel_x\":%d,\"pause_panel_y\":%d,\"pause_panel_w\":%d,\"pause_panel_h\":%d,\"menu_first_y\":%d,\"menu_last_y\":%d,\"menu_selected\":%d,\"transitions\":[",
            debug_source_sha256(),debug_showcase_checkpoint_name(),debug_state_name(G.state),
            debug_state_name(G.state),debug_state_name(dbg_showcase_state_after_1s),dbg_showcase_frames,DBG_CFG.hold_ms,label,G.room.door_count,doors_cleared,dbg_showcase_weapon_door,weapon_label_camera_visible,
-           DBG_CFG.showcase_checkpoint==3,(VIRT_W-208)/2,44,208,164,110,176,G.menu_sel);
+           player_damage_visible,player_damage_value,player_damage_crit,
+           DBG_CFG.showcase_checkpoint==3,16,14,448,240,232,232,G.menu_sel);
     for (int i=0;i<dbg_showcase_transition_count;i++)
         printf("%s{\"owner\":\"%s\",\"before\":\"%s\",\"after\":\"%s\"}",i?",":"",
                dbg_showcase_transitions[i].owner,debug_state_name(dbg_showcase_transitions[i].before),
@@ -1838,18 +3168,70 @@ static bool debug_showcase_prepare_weapon_branch(void){
     return false;
 }
 static void debug_prepare_ui_showcase(void){
-    dd_debug_send_key(SAPP_KEYCODE_SPACE,false);
-    dd_debug_send_key(SAPP_KEYCODE_ENTER,false);
-    dd_debug_send_key(SAPP_KEYCODE_SPACE,false);
-    dd_debug_send_key(SAPP_KEYCODE_SPACE,false);
-    dd_debug_send_key(SAPP_KEYCODE_SPACE,false);
+    if (DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 || DBG_CFG.showcase_checkpoint==9){
+        start_run();
+        G.state=ST_PLAY;
+        G.state_t=0;
+    } else {
+        start_run();
+        G.state=ST_PLAY;
+        G.state_t=0;
+    }
     debug_invariant("showcase-play-state",ST_PLAY,G.state);
     if (DBG_CFG.showcase_checkpoint==1){
         G.pl.hp=0;
         player_take_damage(G.pl.pos);
     } else if (DBG_CFG.showcase_checkpoint==3) {
+        G.pl.relics[RELIC_CHECKSUM]=true;
+        G.pl.relics[RELIC_LUMINANCE]=true;
+        G.pl.wrelics[0]=WR_SWORD_WAVE;
+        G.pl.wrelics[1]=WR_SWORD_WHIRL;
         dd_debug_send_key(SAPP_KEYCODE_ESCAPE,false);
         debug_invariant("showcase-pause-state",ST_PAUSE,G.state);
+    } else if (DBG_CFG.showcase_checkpoint==4) {
+        G.pl.maxhp=4; G.pl.hp=3.5f;
+        G.meta.upg[3]=16;
+        G.pl.shield=1.5f;
+        G.pl.light_shield_cap=player_light_shield_limit();
+        G.pl.iframes=60.0f;
+        memset(G.ents,0,sizeof G.ents);
+        spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(24,0)));
+        G.ents[0].hp=G.ents[0].maxhp=100.0f;
+        G.ents[0].spawn_t=0;
+        G.pl.aim=V2(1,0);
+        mouse_present=false;
+        attack_held=true;
+    } else if (DBG_CFG.showcase_checkpoint==5) {
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.5f);
+        G.room.idx=1;
+        spawn_pickup(PK_WRELIC,v2add(G.pl.pos,V2(-40,30)),(Weapon){0,0},WR_CANNON_FRAG,0);
+        spawn_pickup(PK_WRELIC,v2add(G.pl.pos,V2(40,30)),(Weapon){0,0},WR_WAND_FORK,0);
+        G.room.cleared=true;
+    } else if (DBG_CFG.showcase_checkpoint==6) {
+        memset(G.pickups,0,sizeof G.pickups);
+        for (int i=0;i<4;i++) G.pl.relics[i]=true;
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.5f);
+        spawn_pickup(PK_RELIC,G.pl.pos,(Weapon){0,0},RELIC_LUMINANCE,0);
+        debug_invariant("showcase-relic-swap",1,player_try_pickup(&G.pickups[0])?1:0);
+        debug_invariant("showcase-relic-swap-state",ST_RELIC_SWAP,G.state);
+    } else if (DBG_CFG.showcase_checkpoint==7) {
+        G.room.event_type=MEM_EVENT_CORRUPTED;
+        G.room.event_tag=MEM_TAG_PROMISE;
+        G.room.event_trait=ELITE_HASTE;
+        G.room.event_state=MEM_STATE_AVAILABLE;
+        G.room.event_pos=G.pl.pos;
+        G.room.event_tile_x=(int)(G.pl.pos.x/TILE);
+        G.room.event_tile_y=(int)(G.pl.pos.y/TILE);
+    } else if (DBG_CFG.showcase_checkpoint==8) {
+        room_generate(3,8,PROMISE_NONE,DIR_L);
+        G.boss_intro_t=20.0f;
+        debug_invariant("showcase-boss-intro",1,G.boss_intro?1:0);
+    } else if (DBG_CFG.showcase_checkpoint==9) {
+        G.fb_core=3;
+        G.fb_t=4.0f;
+        G.state=ST_FLASHBACK;
+        G.state_t=0;
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -1879,8 +3261,14 @@ static void debug_showcase_tick(float dt){
 }
 static const char* debug_state_name(int state){
     switch (state){
+        case ST_BOOT: return "ST_BOOT";
         case ST_TITLE: return "ST_TITLE";
+        case ST_OPTIONS: return "ST_OPTIONS";
+        case ST_INTRO: return "ST_INTRO";
         case ST_PLAY: return "ST_PLAY";
+        case ST_FLASHBACK: return "ST_FLASHBACK";
+        case ST_RELIC_SWAP: return "ST_RELIC_SWAP";
+        case ST_ENDING: return "ST_ENDING";
         case ST_DEAD: return "ST_DEAD";
         case ST_PAUSE: return "ST_PAUSE";
         default: return "other";
@@ -1925,15 +3313,22 @@ static void debug_fixture_dd_retry(void){
     player_take_damage(G.pl.pos); G.state=ST_DEAD; G.state_t=2.0f;
     int settlement_saves=dd_debug_meta_save_events();
     int settlement_bank_events=((int)G.meta.bytes_currency-before_currency)==bytes_run_before?1:0;
-    debug_dispatch_key(DBG_CFG.retry_key,false);
+    debug_dispatch_key(SAPP_KEYCODE_R,false);
     uint32_t run_seed_after=G.run_seed;
     int retry_state=G.state;
     debug_invariant("retry-bank-events",1,settlement_bank_events);
     debug_invariant("retry-settlement-save-events",1,settlement_saves);
     debug_invariant("retry-total-save-events",2,dd_debug_meta_save_events());
     debug_invariant("retry-state",ST_PLAY,retry_state);
-    G.state=ST_DEAD; G.state_t=2.0f; debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
-    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-retry-contract\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":%d,\"settlement_meta_save_events\":%d,\"total_meta_save_events\":%d,\"bytes_run\":%d,\"bytes_currency\":%d,\"title_seed\":%u,\"run_seed\":%u,\"run_seed_before\":%u,\"run_seed_after\":%u,\"title_weapon\":%d,\"difficulty\":%d,\"ngplus\":%d,\"retry_key\":\"%s\",\"retry_state\":\"%s\",\"title_state_after_esc\":\"%s\"}\n",debug_source_sha256(),debug_state_name(state_before),debug_state_name(G.state),settlement_bank_events,settlement_saves,dd_debug_meta_save_events(),bytes_run_before,(int)G.meta.bytes_currency-before_currency,G.title_seed,G.run_seed,run_seed_before,run_seed_after,G.title_weapon,G.difficulty,G.ngplus,DBG_CFG.retry_key==SAPP_KEYCODE_R?"r":"enter",debug_state_name(retry_state),debug_state_name(G.state));
+    const sapp_keycode menu_keys[3]={SAPP_KEYCODE_SPACE,SAPP_KEYCODE_ENTER,SAPP_KEYCODE_ESCAPE};
+    int menu_states[3];
+    for (int i=0;i<3;i++){
+        G.state=ST_DEAD; G.state_t=2.0f;
+        debug_dispatch_key(menu_keys[i],false);
+        menu_states[i]=G.state;
+        debug_invariant("death-menu-state",ST_TITLE,menu_states[i]);
+    }
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-retry-contract\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":%d,\"settlement_meta_save_events\":%d,\"total_meta_save_events\":%d,\"bytes_run\":%d,\"bytes_currency\":%d,\"title_seed\":%u,\"run_seed\":%u,\"run_seed_before\":%u,\"run_seed_after\":%u,\"title_weapon\":%d,\"difficulty\":%d,\"ngplus\":%d,\"retry_state\":\"%s\",\"title_state_after_space\":\"%s\",\"title_state_after_enter\":\"%s\",\"title_state_after_esc\":\"%s\"}\n",debug_source_sha256(),debug_state_name(state_before),debug_state_name(G.state),settlement_bank_events,settlement_saves,dd_debug_meta_save_events(),bytes_run_before,(int)G.meta.bytes_currency-before_currency,G.title_seed,G.run_seed,run_seed_before,run_seed_after,G.title_weapon,G.difficulty,G.ngplus,debug_state_name(retry_state),debug_state_name(menu_states[0]),debug_state_name(menu_states[1]),debug_state_name(menu_states[2]));
 }
 static void debug_fixture_dd_forfeit(void){
     G.state=ST_PLAY; G.state_t=0;
@@ -1968,11 +3363,146 @@ static void debug_fixture_dd_shake_menu(bool roundtrip){
     G.state=ST_PLAY; G.state_t=0;
     int state_before=G.state;
     G.menu_sel=0; dd_debug_reset_meta_save_events();
-    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false); debug_dispatch_key(SAPP_KEYCODE_DOWN,false);
+    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false); debug_dispatch_key(SAPP_KEYCODE_RIGHT,false);
     int selected=G.menu_sel; debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
-    int after=G.meta.opt_shake, reloaded=after;
-    if (roundtrip){ memset(&G.meta,0,sizeof G.meta); meta_load(); reloaded=G.meta.opt_shake; }
-    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-%s\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":0,\"settlement_meta_save_events\":0,\"total_meta_save_events\":%d,\"bytes_run\":%d,\"bytes_currency\":%u,\"title_seed\":%u,\"run_seed\":%u,\"title_weapon\":%d,\"difficulty\":%d,\"ngplus\":%d,\"menu_order\":[\"resume\",\"shake\",\"scanline\",\"title\"],\"selected_after_one_down\":\"%s\",\"opt_shake_before\":%d,\"opt_shake_after\":%d,\"opt_scanline_before\":%d,\"opt_scanline_after\":%d,\"reloaded\":%d,\"save_bytes\":%zu,\"checksum_offset\":%zu}\n",debug_source_sha256(),roundtrip?"shake-roundtrip":"shake-menu",debug_state_name(state_before),debug_state_name(G.state),dd_debug_meta_save_events(),G.bytes_run,G.meta.bytes_currency,G.title_seed,G.run_seed,G.title_weapon,G.difficulty,G.ngplus,selected==1?"shake":"other",before,after,scanline,G.meta.opt_scanline,reloaded,sizeof(MetaSave),offsetof(MetaSave,checksum));
+    int state_after=G.state;
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-%s\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":0,\"settlement_meta_save_events\":0,\"total_meta_save_events\":%d,\"menu_order\":[\"resume\",\"settings\",\"title\"],\"selected_after_one_right\":\"%s\",\"opt_shake_before\":%d,\"opt_shake_after\":%d,\"opt_scanline_before\":%d,\"opt_scanline_after\":%d,\"save_bytes\":%zu,\"checksum_offset\":%zu}\n",debug_source_sha256(),roundtrip?"shake-roundtrip":"shake-menu",debug_state_name(state_before),debug_state_name(state_after),dd_debug_meta_save_events(),selected==1?"settings":"other",before,G.meta.opt_shake,scanline,G.meta.opt_scanline,sizeof(MetaSave),offsetof(MetaSave,checksum));
+}
+static void debug_fixture_dd_options(void){
+    int queue_before=G.meta.intro_replay_queued, seen_before=G.meta.intro_seen;
+    int scanline_before=G.meta.opt_scanline, shake_before=G.meta.opt_shake;
+    int bgm_before=G.meta.opt_bgm, sfx_before=G.meta.opt_sfx;
+    int saves, queue_after, queue_reloaded, state_entered, state_returned, pause_returned;
+    G.state=ST_TITLE; G.state_t=0; G.menu_sel=5;
+    debug_dispatch_key(SAPP_KEYCODE_S,false);
+    debug_invariant("options-title-wrap-down",0,G.menu_sel);
+    debug_dispatch_key(SAPP_KEYCODE_W,false);
+    debug_invariant("options-title-wrap-up",5,G.menu_sel);
+    G.menu_sel=0;
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    debug_invariant("difficulty-chooser-enter",ST_DIFFICULTY_SELECT,G.state);
+    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
+    debug_invariant("difficulty-chooser-return",ST_TITLE,G.state);
+    G.menu_sel=1;
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    debug_invariant("weapon-selector-enter",ST_WEAPON_SELECT,G.state);
+    int weapon_before=G.title_weapon;
+    debug_dispatch_key(SAPP_KEYCODE_W,false);
+    debug_invariant("weapon-selector-w-prev",(weapon_before+WPN_COUNT-1)%WPN_COUNT,G.title_weapon);
+    debug_dispatch_key(SAPP_KEYCODE_S,false);
+    debug_invariant("weapon-selector-s-next",weapon_before,G.title_weapon);
+    debug_dispatch_key(SAPP_KEYCODE_UP,false);
+    debug_invariant("weapon-selector-up-prev",(weapon_before+WPN_COUNT-1)%WPN_COUNT,G.title_weapon);
+    debug_dispatch_key(SAPP_KEYCODE_DOWN,false);
+    debug_invariant("weapon-selector-down-next",weapon_before,G.title_weapon);
+    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
+    debug_invariant("weapon-selector-return",ST_TITLE,G.state);
+    G.menu_sel=3;
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    state_entered=G.state;
+    debug_invariant("options-enter-state",ST_OPTIONS,G.state);
+    dd_debug_reset_meta_save_events();
+    if (DBG_CFG.options_checkpoint==1){
+        G.menu_sel=0;
+        debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+        debug_dispatch_key(SAPP_KEYCODE_S,false);
+        debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+        G.menu_sel=6;
+        debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    } else {
+        debug_dispatch_key(SAPP_KEYCODE_Q,false);
+    }
+    saves=dd_debug_meta_save_events();
+    queue_after=G.meta.intro_replay_queued;
+    debug_invariant("options-intro-seen",seen_before,G.meta.intro_seen);
+    debug_invariant("options-scanline",scanline_before,G.meta.opt_scanline);
+    debug_invariant("options-shake",shake_before,G.meta.opt_shake);
+    if (DBG_CFG.options_checkpoint==1){
+        debug_invariant("options-toggle-save",3,saves);
+        debug_invariant("options-toggle-queue",!queue_before,queue_after);
+        debug_invariant("options-toggle-bgm",!bgm_before,G.meta.opt_bgm);
+        debug_invariant("options-toggle-sfx",!sfx_before,G.meta.opt_sfx);
+        memset(&G.meta,0,sizeof G.meta);
+        meta_load();
+        queue_reloaded=G.meta.intro_replay_queued;
+        debug_invariant("options-reload-queue",queue_after,queue_reloaded);
+        debug_invariant("options-reload-seen",seen_before,G.meta.intro_seen);
+        debug_invariant("options-reload-scanline",scanline_before,G.meta.opt_scanline);
+        debug_invariant("options-reload-shake",shake_before,G.meta.opt_shake);
+        debug_invariant("options-reload-bgm",!bgm_before,G.meta.opt_bgm);
+        debug_invariant("options-reload-sfx",!sfx_before,G.meta.opt_sfx);
+        G.state=ST_OPTIONS; G.menu_sel=0;
+    } else {
+        queue_reloaded=queue_after;
+        debug_invariant("options-invalid-save",0,saves);
+        debug_invariant("options-invalid-queue",queue_before,queue_after);
+    }
+    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
+    state_returned=G.state;
+    debug_invariant("options-return-title",ST_TITLE,G.state);
+    G.state=ST_PAUSE; G.menu_sel=1;
+    debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
+    debug_invariant("options-pause-enter",ST_OPTIONS,G.state);
+    debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
+    pause_returned=G.state;
+    debug_invariant("options-pause-return",ST_PAUSE,pause_returned);
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-options\",\"checkpoint\":\"%s\",\"fixture_ready\":true,\"state_entered\":\"%s\",\"state_returned\":\"%s\",\"pause_returned\":\"%s\",\"queue_before\":%d,\"queue_after\":%d,\"queue_reloaded\":%d,\"intro_seen_before\":%d,\"intro_seen_after\":%u,\"pause_scanline_before\":%d,\"pause_scanline_after\":%u,\"pause_shake_before\":%d,\"pause_shake_after\":%u,\"bgm_before\":%d,\"bgm_after\":%u,\"sfx_before\":%d,\"sfx_after\":%u,\"meta_save_events\":%d,\"run_started\":false}\n",
+           debug_source_sha256(),DBG_CFG.options_checkpoint==1?"options-toggle":(DBG_CFG.options_checkpoint==2?"options-invalid-state":"options-invalid-input"),
+           debug_state_name(state_entered),debug_state_name(state_returned),debug_state_name(pause_returned),queue_before,queue_after,queue_reloaded,
+           seen_before,G.meta.intro_seen,scanline_before,G.meta.opt_scanline,shake_before,G.meta.opt_shake,
+           bgm_before,G.meta.opt_bgm,sfx_before,G.meta.opt_sfx,saves);
+    if (DBG_CFG.have_hold_ms){
+        G.state=ST_OPTIONS; G.menu_sel=0; G.state_t=0;
+        dbg_options_visual_active=1;
+    }
+}
+static void debug_fixture_story_signals(void){
+    const char* fallback="복구 신호가 잠시 흔들린다.";
+    static const char* expected_titles[4]={
+        "복구 블록 #1 — 첫 부팅", "복구 블록 #2 — 첫 승리",
+        "복구 블록 #3 — 마지막 저장", "복구 블록 #4 — 남긴 한 줄"
+    };
+    static const char* expected_terms[4]={"첫 모험","박수","다음에","읽기 창"};
+    int contexts=0, entries=0;
+    for (int biome=0;biome<4;biome++) for (int type=MEM_EVENT_ECHO;type<=MEM_EVENT_CORRUPTED;type++)
+        for (int tag=0;tag<MEM_TAG_COUNT;tag++){
+            const char* text=story_memory_context(biome,type,tag);
+            int bounded=(int)strlen(text)<96;
+            debug_invariant("story-context-bounded",1,bounded);
+            debug_invariant("story-context-valid",0,!strcmp(text,fallback));
+            printf("{\"schema\":1,\"kind\":\"story_context\",\"biome\":%d,\"event_type\":%d,\"tag\":%d,\"bounded\":%d,\"text\":\"%s\"}\n",
+                   biome,type,tag,bounded,text);
+            contexts++;
+        }
+    debug_invariant("story-context-fallback",1,!strcmp(story_memory_context(-1,0,0),fallback));
+    debug_invariant("story-boss-fallback",1,!strcmp(story_boss_framing(4),"복구 신호가 이어진다."));
+    for (int core=0;core<4;core++){
+        const char* title=core_title_for(core);
+        const char* text=core_text_for(core);
+        debug_invariant("story-core-title",1,!strcmp(title,expected_titles[core]));
+        debug_invariant("story-core-act",1,strstr(text,expected_terms[core])!=NULL);
+        printf("{\"schema\":1,\"kind\":\"story_core\",\"core_id\":%d,\"title\":\"%s\",\"inventory\":\"%s\",\"flashback_chars\":%d}\n",
+               core,title,core_inventory_texts[core],(int)strlen(text));
+    }
+    debug_invariant("story-core-invalid-title",1,!strcmp(core_title_for(4),"복구 블록 — 확인 불가"));
+    debug_invariant("story-core-invalid-text",1,!strcmp(core_text_for(-1),"복구 블록을 확인할 수 없다."));
+    dd_debug_story_entry_notice_reset();
+    int first0=dd_debug_story_entry_notice_probe(0,0);
+    int first1=dd_debug_story_entry_notice_probe(1,0);
+    int duplicate0=dd_debug_story_entry_notice_probe(0,0);
+    int first2=dd_debug_story_entry_notice_probe(2,0);
+    int first3=dd_debug_story_entry_notice_probe(3,0);
+    int later3=dd_debug_story_entry_notice_probe(3,1);
+    debug_invariant("story-entry-0-first",1,first0);
+    debug_invariant("story-entry-1-first",1,first1);
+    debug_invariant("story-entry-0-repeat",0,duplicate0);
+    debug_invariant("story-entry-2-first",1,first2);
+    debug_invariant("story-entry-3-first",1,first3);
+    debug_invariant("story-entry-later-room",0,later3);
+    entries=first0+first1+first2+first3;
+    printf("{\"schema\":1,\"kind\":\"story_entry_sequence\",\"sequence\":[0,1,0],\"emits\":[%d,%d,%d],\"unique_biomes\":%d,\"later_room_emits\":%d}\n",
+           first0,first1,duplicate0,entries,later3);
+    printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"story-signals\",\"contexts\":%d,\"entries\":%d,\"fallback\":true,\"status\":\"pass\"}\n",contexts,entries);
 }
 static int debug_last_log_code(void){
     if (!G.memory.log_count) return -1;
@@ -2098,7 +3628,7 @@ void debug_apply_config_after_game_init(void){
     if (DBG_CFG.clean_profile) debug_prepare_configured_run();
     if (DBG_CFG.have_seed) G.title_seed = DBG_CFG.seed;
     if (DBG_CFG.have_telemetry) debug_telemetry_open();
-    if (DBG_CFG.clean_profile && DBG_CFG.action!=21) start_run();
+    if (DBG_CFG.clean_profile && DBG_CFG.action!=21 && DBG_CFG.action!=22 && DBG_CFG.action!=23 && DBG_CFG.action!=25) start_run();
     dbg_auto=DBG_CFG.auto_play; dbg_god=DBG_CFG.god; dbg_intro=DBG_CFG.intro;
     dbg_ending=DBG_CFG.ending;
     if (DBG_CFG.have_jump){ dbg_jump_biome=DBG_CFG.jump_biome; dbg_jump_room=DBG_CFG.jump_room; }
@@ -2123,6 +3653,9 @@ void debug_apply_config_after_game_init(void){
     }
     if (DBG_CFG.action==5 || DBG_CFG.action==6) G.state=ST_PLAY;
     if (DBG_CFG.action==21){ debug_prepare_ui_showcase(); return; }
+    if (DBG_CFG.action==22){ debug_prepare_opening_fixture(); return; }
+    if (DBG_CFG.action==23){ debug_prepare_ending_fixture(); return; }
+    if (DBG_CFG.action==25){ debug_prepare_start_intro_fixture(); return; }
     switch (DBG_CFG.action){
     case 1:
         debug_emit_snapshot(false); fflush(stdout); exit(0);
@@ -2267,6 +3800,12 @@ void debug_apply_config_after_game_init(void){
     case 18: debug_fixture_dd_promise_labels(); fflush(stdout); exit(0);
     case 19: debug_fixture_dd_shake_menu(false); fflush(stdout); exit(0);
     case 20: debug_fixture_dd_shake_menu(true); fflush(stdout); exit(0);
+    case 24:
+        debug_fixture_dd_options();
+        fflush(stdout);
+        if (!DBG_CFG.have_hold_ms) exit(0);
+        break;
+    case 26: debug_fixture_story_signals(); fflush(stdout); exit(0);
     default: break;
     }
     fflush(stdout); sapp_request_quit();
@@ -2279,20 +3818,33 @@ void debug_apply_config_after_game_init(void){
 void game_init(void){
     memset(&G,0,sizeof(G));
     meta_load();
+    audio_set_bgm_enabled(G.meta.opt_bgm!=0);
+    audio_set_sfx_enabled(G.meta.opt_sfx!=0);
     G.state=ST_BOOT;
-    G.difficulty=1;
+    G.difficulty=0;
+    G.ngplus=G.meta.true_clear;
     G.title_weapon=WPN_SWORD;
+    G.ambient_mul=1.0f;
+    G.light_mul=1.0f;
     music_set(-1);
+}
+
+static int resolve_ending_result(uint8_t core_bits){
+    int core_count=0;
+    for (int i=0;i<4;i++) if (core_bits&(1<<i)) core_count++;
+    return core_count==4?2:(core_count==0?0:1);
 }
 
 static void apply_fade_action(void){
     int a=G.fade_next_state;
     if (a==-2){
+        player_restore_light_shield();
         room_generate(G.room.biome,G.room.idx+1,G.pending_door,G.pending_entry_dir);
     } else if (a==-3){
         if (G.room.biome<3){
             int nb=G.room.biome+1;
             G.pl.hp=fminf((float)G.pl.maxhp,G.pl.hp+2.0f);
+            player_restore_light_shield();
             room_generate(nb,0,PROMISE_NONE,DIR_L);
             music_set(nb+1);
             char buf[64];
@@ -2300,12 +3852,11 @@ static void apply_fade_action(void){
             set_msg(buf);
         } else {
             // 읽기 헤드 도달 — 엔딩 결정
-            int ncore=0; for(int i=0;i<4;i++) if(G.pl.cores&(1<<i)) ncore++;
-            G.ending = ncore==4?2:(ncore==0?0:1);
+            G.ending = resolve_ending_result(G.pl.cores);
             G.meta.wins++;
             G.meta.bytes_currency += (uint32_t)G.bytes_run + (uint32_t)(G.pl.shards*5);
             G.meta.best_biome=3;
-            if (G.ending==2) G.meta.true_clear=1;
+            if (G.ending==2){ G.meta.true_clear=1; G.ngplus=true; }
             meta_save();
             G.state=ST_ENDING; G.state_t=0;
             music_set(6);
@@ -2325,12 +3876,18 @@ void game_frame(void){
     float rdt=(float)sapp_frame_duration();
     if (rdt>0.05f) rdt=0.05f;
     G.time += rdt;
+#ifdef DD_DEBUG
+    if (!((dbg_opening_active && dbg_opening_frozen) ||
+          (dbg_start_intro_active && dbg_start_intro_frozen)))
+#endif
     G.state_t += rdt;
 #ifdef DD_DEBUG
     int showcase_state_before=G.state;
     if (!dbg_showcase_active && (dbg_auto||dbg_jump_biome>=0||dbg_ending>=0)) debug_drive(rdt);
     debug_showcase_record_transition("debug-drive",showcase_state_before);
     debug_showcase_tick(rdt);
+    if (dbg_options_visual_active && G.state_t*1000.0f >= DBG_CFG.hold_ms)
+        sapp_request_quit();
 #endif
 
     // 페이드
@@ -2357,7 +3914,10 @@ void game_frame(void){
     // 상태 갱신
     switch (G.state){
     case ST_BOOT:
-        if (G.state_t>1.6f){ G.state=ST_TITLE; G.state_t=0; music_set(0); }
+        if (G.state_t>=15.0f){ G.state_t=15.0f; boot_handoff_to_title(true,"none"); }
+        break;
+    case ST_INTRO:
+        if (G.state_t>=11.2f) intro_handoff();
         break;
     case ST_PLAY:
         if (G.fade_dir==0||G.fade_next_state==-2) update_play(dt);
@@ -2369,26 +3929,39 @@ void game_frame(void){
     }
 #ifdef DD_DEBUG
     debug_showcase_record_transition("update",showcase_state_before);
+    debug_opening_tick(rdt);
+    debug_start_intro_tick(rdt);
+    debug_ending_tick(rdt);
 #endif
 
     // 그리기
     render_begin_frame();
-    if (G.state==ST_PLAY||G.state==ST_PAUSE||G.state==ST_INVENTORY){
+    if (G.state==ST_PLAY||G.state==ST_PAUSE||G.state==ST_INVENTORY||G.state==ST_RELIC_SWAP){
         draw_play();
         draw_ui_begin();
         hud_draw();
         if (G.state==ST_INVENTORY) draw_inventory();
+        if (G.state==ST_RELIC_SWAP) draw_relic_swap();
         if (G.state==ST_PAUSE) draw_pause();
     } else if (G.state==ST_TITLE){
         draw_title();
+    } else if (G.state==ST_OPTIONS){
+        draw_options();
+    } else if (G.state==ST_WEAPON_SELECT){
+        draw_ui_begin();
+        draw_weapon_select();
+    } else if (G.state==ST_DIFFICULTY_SELECT){
+        draw_ui_begin();
+        draw_difficulty_select();
     } else if (G.state==ST_UPGRADE){
         draw_ui_begin();
         draw_upgrade();
+    } else if (G.state==ST_CODEX){
+        draw_codex();
+    } else if (G.state==ST_CODEX_DETAIL){
+        draw_codex_detail();
     } else if (G.state==ST_BOOT){
-        draw_ui_begin();
-        float a=clampf(G.state_t,0,1)*(G.state_t>1.2f?(1.6f-G.state_t)/0.4f:1.0f);
-        draw_text_center("1,474,560 bytes",VIRT_W/2,VIRT_H/2-14,1.1f,COL(0x3FE0C5),clampf(a,0,1));
-        draw_text_center("INSERT DISK",VIRT_W/2,VIRT_H/2+10,0.7f,COL(0x6F6090),clampf(a,0,1)*(0.6f+0.4f*sinf(G.time*6.0f)));
+        draw_boot();
     } else if (G.state==ST_INTRO){
         draw_intro();
     } else if (G.state==ST_FLASHBACK){
@@ -2411,49 +3984,45 @@ void game_frame(void){
     render_set_scanline(G.meta.opt_scanline?0.35f:0.0f);
     render_end_frame(G.time,G.flash_white,G.fade,G.fade_col,
                      G.shake*(G.meta.opt_shake?1.0f:0.0f),G.shake*(G.meta.opt_shake?1.0f:0.0f));
+#ifdef DD_DEBUG
+    if (dbg_opening_active && dbg_opening_ready && !dbg_opening_emitted)
+        dbg_opening_rendered=1;
+    if (dbg_ending_active && !dbg_ending_emitted)
+        dbg_ending_rendered=1;
+#endif
 }
 
 // ----------------------------------------------------------- events
+static void title_start_run(void){
+    if (!G.meta.intro_seen || G.meta.intro_replay_queued) intro_begin();
+    else {
+        start_run();
+        G.state=ST_PLAY;
+        G.state_t=0;
+        G.fade=1;
+        G.fade_dir=-1;
+    }
+}
+
 static void title_activate(void){
     switch (G.menu_sel){
     case 0:
         sfx_play(SFX_UI);
-        G.state=ST_INTRO; G.state_t=0; G.intro_page=0;
-        music_set(-1);
+        G.state=ST_DIFFICULTY_SELECT; G.state_t=0; G.menu_sel=G.difficulty;
         break;
-    case 1: {
-        bool locked=!((G.meta.unlocked_weapons>>G.title_weapon)&1);
-        if (locked){
-            uint32_t cost=(uint32_t)(30+G.title_weapon*12);
-            if (G.meta.bytes_currency>=cost){
-                G.meta.bytes_currency-=cost;
-                G.meta.unlocked_weapons|=(1u<<G.title_weapon);
-                meta_save();
-                sfx_play(SFX_CORE_SHARD);
-            } else sfx_play(SFX_DENY);
-        }
-    } break;
+    case 1: G.state=ST_WEAPON_SELECT; G.state_t=0; sfx_play(SFX_UI); break;
     case 2: G.state=ST_UPGRADE; G.upg_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
-    case 3: G.difficulty=(G.difficulty+1)%3; sfx_play(SFX_UI); break;
-    case 4: G.title_seed = G.title_seed? 0:(G.meta.last_seed?G.meta.last_seed:12345u); sfx_play(SFX_UI); break;
-    case 5: if (G.meta.true_clear){ G.ngplus=!G.ngplus; sfx_play(SFX_UI);} else sfx_play(SFX_DENY); break;
-    case 6: meta_save(); sapp_request_quit(); break;
+    case 3: G.options_return_state=ST_TITLE; G.state=ST_OPTIONS; G.menu_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
+    case 4: G.state=ST_CODEX; G.codex_section=0; G.codex_page=0; G.codex_detail=0; G.codex_focus=0; sfx_play(SFX_UI); break;
+    case 5: meta_save(); sapp_request_quit(); break;
     }
-}
-
-static void title_adjust(int dir){
-    if (G.menu_sel==1){
-        G.title_weapon=(G.title_weapon+dir+WPN_COUNT)%WPN_COUNT;
-        sfx_play(SFX_UI);
-    } else if (G.menu_sel==3){
-        G.difficulty=(G.difficulty+dir+3)%3; sfx_play(SFX_UI);
-    } else title_activate();
 }
 
 void game_event(const sapp_event* e){
 #ifdef DD_DEBUG
     int showcase_state_before=G.state;
 #endif
+    if (G.state==ST_INTRO) return;
     if (e->type==SAPP_EVENTTYPE_KEY_DOWN && e->key_code<512) key_held[e->key_code]=true;
     if (e->type==SAPP_EVENTTYPE_KEY_UP && e->key_code<512) key_held[e->key_code]=false;
     if (e->type==SAPP_EVENTTYPE_MOUSE_MOVE){
@@ -2470,26 +4039,101 @@ void game_event(const sapp_event* e){
 
     switch (G.state){
     case ST_BOOT:
-        if (anykey){ G.state=ST_TITLE; G.state_t=0; music_set(0); }
+        if (anykey) boot_handoff_to_title(false,kd?"key":"mouse");
         break;
     case ST_TITLE:
         if (!kd) break;
-        if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.menu_sel=(G.menu_sel+6)%7; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.menu_sel=(G.menu_sel+1)%7; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A) title_adjust(-1);
-        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D) title_adjust(1);
+        if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.menu_sel=(G.menu_sel+5)%6; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.menu_sel=(G.menu_sel+1)%6; sfx_play(SFX_UI); }
         else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE) title_activate();
         break;
-    case ST_INTRO:
-        if (anykey){
-            G.intro_page++;
-            G.state_t=0;
+    case ST_OPTIONS:
+        if (!kd) break;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE){
+            G.state=G.options_return_state?G.options_return_state:ST_TITLE;
+            G.menu_sel=G.state==ST_PAUSE?1:3;
             sfx_play(SFX_UI);
-            if (G.intro_page>=3){
-                start_run();
-                G.state=ST_PLAY;
-                G.fade=1; G.fade_dir=-1;
+        } else if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){
+            G.menu_sel=(G.menu_sel+8)%9; sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){
+            G.menu_sel=(G.menu_sel+1)%9; sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A||
+                   e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D||
+                   e->key_code==SAPP_KEYCODE_ENTER){
+            if (G.menu_sel==0){ G.meta.opt_bgm=!G.meta.opt_bgm; audio_set_bgm_enabled(G.meta.opt_bgm!=0); }
+            else if (G.menu_sel==1){ G.meta.opt_sfx=!G.meta.opt_sfx; audio_set_sfx_enabled(G.meta.opt_sfx!=0); }
+            else if (G.menu_sel==2) G.difficulty=(G.difficulty+1)%3;
+            else if (G.menu_sel==3) G.meta.opt_shake=!G.meta.opt_shake;
+            else if (G.menu_sel==4) G.meta.opt_scanline=!G.meta.opt_scanline;
+            else if (G.menu_sel==5) G.title_seed=G.title_seed?0:(G.meta.last_seed?G.meta.last_seed:12345u);
+            else if (G.menu_sel==6) G.meta.intro_replay_queued=!G.meta.intro_replay_queued;
+            else if (G.menu_sel==7){ if(G.meta.true_clear) G.ngplus=!G.ngplus; else { sfx_play(SFX_DENY); break; } }
+            else { G.state=G.options_return_state?G.options_return_state:ST_TITLE; G.menu_sel=G.state==ST_PAUSE?1:3; sfx_play(SFX_UI); break; }
+            meta_save(); sfx_play(SFX_UI);
+        }
+        break;
+    case ST_WEAPON_SELECT:
+        if (!kd) break;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_TITLE; G.menu_sel=1; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A||
+                 e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.title_weapon=(G.title_weapon+WPN_COUNT-1)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D||
+                 e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.title_weapon=(G.title_weapon+1)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE){
+            bool unlocked=(G.meta.unlocked_weapons&(1u<<G.title_weapon))!=0;
+            uint32_t cost=(uint32_t)weapon_unlock_cost(G.title_weapon);
+            if (!unlocked && G.meta.bytes_currency>=cost){ G.meta.bytes_currency-=cost; G.meta.unlocked_weapons|=1u<<G.title_weapon; meta_save(); unlocked=true; sfx_play(SFX_CORE_SHARD); }
+            else if (!unlocked){ sfx_play(SFX_DENY); break; }
+            if (unlocked){ G.state=ST_TITLE; G.menu_sel=1; sfx_play(SFX_UI); }
+        }
+        break;
+    case ST_DIFFICULTY_SELECT:
+        if (!kd) break;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_TITLE; G.menu_sel=0; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A){ G.menu_sel=(G.menu_sel+2)%3; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D){ G.menu_sel=(G.menu_sel+1)%3; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE){ G.difficulty=G.menu_sel; title_start_run(); }
+        break;
+    case ST_CODEX:
+        if (!kd) break;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE){
+            if (G.codex_focus==1) G.codex_focus=0;
+            else G.state=ST_TITLE;
+            sfx_play(SFX_UI);
+        }
+        else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE){
+            if (G.codex_focus==0) G.codex_focus=1;
+            else G.state=ST_CODEX_DETAIL;
+            sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){
+            if (G.codex_focus==0){
+                G.codex_section=(G.codex_section+3)%4; G.codex_page=0; G.codex_detail=0;
+            } else {
+                int count=codex_entry_count(G.codex_section);
+                G.codex_detail=(G.codex_detail+count-1)%count;
+                G.codex_page=G.codex_detail/4;
             }
+            sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){
+            if (G.codex_focus==0){
+                G.codex_section=(G.codex_section+1)%4; G.codex_page=0; G.codex_detail=0;
+            } else {
+                int count=codex_entry_count(G.codex_section);
+                G.codex_detail=(G.codex_detail+1)%count;
+                G.codex_page=G.codex_detail/4;
+            }
+            sfx_play(SFX_UI);
+        }
+        break;
+    case ST_CODEX_DETAIL:
+        if (!kd) break;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_CODEX; G.codex_focus=1; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A){
+            int count=codex_entry_count(G.codex_section);
+            G.codex_detail=(G.codex_detail+count-1)%count; G.codex_page=G.codex_detail/4; sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D){
+            int count=codex_entry_count(G.codex_section);
+            G.codex_detail=(G.codex_detail+1)%count; G.codex_page=G.codex_detail/4; sfx_play(SFX_UI);
         }
         break;
     case ST_PLAY:
@@ -2551,6 +4195,21 @@ void game_event(const sapp_event* e){
         if (e->key_code==SAPP_KEYCODE_TAB||e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_PLAY; sfx_play(SFX_UI); }
         else if (e->key_code==SAPP_KEYCODE_Q) player_drop_shard();
         break;
+    case ST_RELIC_SWAP: {
+        if (!kd) break;
+        int count=G.relic_swap_type==PK_WRELIC?2:4;
+        if (e->key_code==SAPP_KEYCODE_ESCAPE) player_confirm_relic_swap(-1);
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A||
+                 e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){
+            G.relic_swap_sel=(G.relic_swap_sel+count-1)%count;
+            sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D||
+                   e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){
+            G.relic_swap_sel=(G.relic_swap_sel+1)%count;
+            sfx_play(SFX_UI);
+        } else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE)
+            player_confirm_relic_swap(G.relic_swap_sel);
+    } break;
     case ST_UPGRADE:
         if (!kd) break;
         if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_TITLE; sfx_play(SFX_UI); }
@@ -2570,12 +4229,11 @@ void game_event(const sapp_event* e){
     case ST_PAUSE:
         if (!kd) break;
         if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_PLAY; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.menu_sel=(G.menu_sel+3)%4; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.menu_sel=(G.menu_sel+1)%4; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A){ G.menu_sel=(G.menu_sel+2)%3; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D){ G.menu_sel=(G.menu_sel+1)%3; sfx_play(SFX_UI); }
         else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE){
             if (G.menu_sel==0){ G.state=ST_PLAY; }
-            else if (G.menu_sel==1){ G.meta.opt_shake=!G.meta.opt_shake; meta_save(); }
-            else if (G.menu_sel==2){ G.meta.opt_scanline=!G.meta.opt_scanline; meta_save(); }
+            else if (G.menu_sel==1){ G.options_return_state=ST_PAUSE; G.state=ST_OPTIONS; G.menu_sel=0; }
             else {
                 settle_run_once(SETTLE_FORFEIT);
             }
@@ -2589,12 +4247,13 @@ void game_event(const sapp_event* e){
         }
         break;
     case ST_DEAD:
-        if (kd && G.state_t>1.0f &&
-            (e->key_code==SAPP_KEYCODE_R||e->key_code==SAPP_KEYCODE_ENTER)){
+        if (kd && G.state_t>1.0f && e->key_code==SAPP_KEYCODE_R){
             start_run_with_seed(G.run_seed);
             G.state=ST_PLAY; G.state_t=0;
             G.fade=1; G.fade_dir=-1;
-        } else if (kd && G.state_t>1.0f && e->key_code==SAPP_KEYCODE_ESCAPE){
+        } else if (kd && G.state_t>1.0f &&
+                   (e->key_code==SAPP_KEYCODE_SPACE||e->key_code==SAPP_KEYCODE_ENTER||
+                    e->key_code==SAPP_KEYCODE_ESCAPE)){
             music_set(0);
             G.state=ST_TITLE; G.state_t=0;
         }

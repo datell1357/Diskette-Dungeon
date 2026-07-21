@@ -37,7 +37,7 @@ const WeaponDef weapon_defs[WPN_COUNT] = {
 };
 const char* prefix_names[PFX_COUNT] = { "", "과열된 ", "차가운 ", "깨진 ", "압축된 " };
 const RelicDef relic_defs[RELIC_COUNT] = {
-    {"체크섬",        64, "주기적으로 무결성 1 회복"},
+    {"체크섬",        64, "주기적으로 무결성 0.5 회복"},
     {"디프래그 코어", 56, "빈 용량만큼 빨라진다"},
     {"오버클럭",      72, "공격속도 +30%, 최대 무결성 -1"},
     {"백업 비트",     96, "치명상 시 1회 부활"},
@@ -45,20 +45,31 @@ const RelicDef relic_defs[RELIC_COUNT] = {
     {"압축 알고리즘", 48, "모든 아이템 용량 -20%"},
     {"배드섹터 부적", 56, "무결성 2 이하일 때 피해 +50%"},
 };
-// 무기 유물 — 무기별 2개. weapon 필드로 어느 무기에 붙는지 표시.
 const WeaponRelicDef weapon_relic_defs[WR_COUNT] = {
     {"검기 칩",     WPN_SWORD,  88, "공속 -30%, 공격 시 관통 검기 발사 (벽에 닿으면 소멸)"},
     {"회전 베기",   WPN_SWORD,  80, "휘두를 때 전방향을 베고 적 탄을 상쇄한다"},
-    {"파편 탄두",   WPN_CANNON, 96, "포탄이 터질 때 6갈래 파편으로 분열"},
+    {"위상 스텝",   WPN_SWORD, 104, "처치 시 가까운 적에게 이동해 200% 위상 공격"},
+    {"처형 루틴",   WPN_SWORD,  96, "25% 이하 일반 적 처형, 0.25 회복과 50% 범위 피해"},
+    {"파편 탄두",   WPN_CANNON, 96, "폭발 시|6갈래 파편 분열"},
     {"관통 레일",   WPN_CANNON, 88, "완충 발사가 화면을 가르는 관통 레일이 된다"},
+    {"지연 신관",   WPN_CANNON, 88, "벽이나 적에 닿으면 잠시 뒤 넓게 폭발"},
+    {"반동 증폭기", WPN_CANNON, 80, "완충 포탄 피해·폭발 반경 증가, 강한 반동"},
     {"도탄 코덱",   WPN_SPRAY,  80, "탄이 벽에 한 번 튕긴다"},
     {"광역 분사",   WPN_SPRAY,  72, "5발 → 8발 광각 분사 (사거리 짧음)"},
+    {"관통 플렉스", WPN_SPRAY,  88, "4발 분사가 적 한 명을 관통한다"},
+    {"수렴 초크",   WPN_SPRAY,  88, "좁은 분사로 사거리와 피해가 증가한다"},
     {"쌍날 루프",   WPN_GLAIVE, 96, "글레이브를 앞뒤 두 개 동시에 던진다"},
     {"궤도 루프",   WPN_GLAIVE, 88, "글레이브가 더 멀리·오래 머문다"},
+    {"회수 가속기", WPN_GLAIVE, 80, "귀환 속도와 귀환 피해가 증가한다"},
+    {"절단 궤적",   WPN_GLAIVE, 88, "비행 경로가 적에게 지속 피해를 준다"},
     {"충격 말뚝",   WPN_LANCE,  96, "랜스가 멈춘 지점에 폭발 범위 피해"},
     {"돌격 창",     WPN_LANCE,  88, "공격 시 앞으로 돌진하며 잠깐 무적"},
-    {"분기 호출",   WPN_WAND,   88, "유도탄 2 → 4발"},
+    {"핀 고정기",   WPN_LANCE,  80, "적중한 일반 적을 잠시 속박한다"},
+    {"관통 충전",   WPN_LANCE,  88, "관통할 때마다 랜스 피해가 증가한다"},
+    {"분기 호출",   WPN_WAND,   88, "유도탄 2→4발"},
     {"연쇄 메아리", WPN_WAND,   80, "탄 명중 시 가까운 적에게 연쇄한다"},
+    {"공명 고리",   WPN_WAND,   88, "명중 지점 주변에 40% 공명 피해를 준다"},
+    {"지연 에코",   WPN_WAND,   80, "명중한 적에게 잠시 뒤 60% 추가 피해"},
 };
 bool player_has_wrelic(int wr){ return G.pl.wrelics[0]==wr || G.pl.wrelics[1]==wr; }
 int player_wrelic_count(void){ int n=0; if(G.pl.wrelics[0]>=0)n++; if(G.pl.wrelics[1]>=0)n++; return n; }
@@ -75,11 +86,14 @@ static void save_path(char* buf, size_t n){
     snprintf(buf, n, "%s/Library/Application Support/DisketteDungeon", home);
 #endif
 }
-static uint32_t meta_checksum(const MetaSave* m){
-    const uint32_t* p = (const uint32_t*)m;
+enum { META_V1_WORDS=12, META_V2_WORDS=17, META_V3_WORDS=19, META_V4_WORDS=21 };
+static uint32_t meta_words_checksum(const uint32_t* p, size_t words){
     uint32_t sum = 0x1D15C0DE;
-    for (size_t i=0;i<offsetof(MetaSave,checksum)/4;i++) sum = sum*31u + p[i];
+    for (size_t i=0;i<words;i++) sum = sum*31u + p[i];
     return sum;
+}
+static uint32_t meta_checksum(const MetaSave* m){
+    return meta_words_checksum((const uint32_t*)m,offsetof(MetaSave,checksum)/4);
 }
 void meta_save(void){
 #ifdef DD_DEBUG
@@ -96,7 +110,7 @@ void meta_save(void){
     char mk[600]; snprintf(mk,sizeof(mk),"mkdir -p \"%s\"",dir); system(mk);
     snprintf(path,sizeof(path),"%s/save.bin",dir);
 #endif
-    G.meta.magic=0xD15C0DE7u; G.meta.version=2;
+    G.meta.magic=0xD15C0DE7u; G.meta.version=4;
     G.meta.checksum = meta_checksum(&G.meta);
     FILE* f = fopen(path,"wb");
     if (f){ fwrite(&G.meta,sizeof(G.meta),1,f); fclose(f); }
@@ -116,6 +130,7 @@ void meta_load(void){
     memset(&G.meta,0,sizeof(G.meta));
     G.meta.unlocked_weapons = 1u<<WPN_SWORD;
     G.meta.opt_scanline = 1; G.meta.opt_shake = 1;
+    G.meta.opt_bgm = 1; G.meta.opt_sfx = 1; G.meta.intro_replay_queued = 1;
 #ifdef DD_DEBUG
     if (dd_debug_clean_profile) return;
 #endif
@@ -128,23 +143,41 @@ void meta_load(void){
 #endif
     FILE* f = fopen(path,"rb");
     if (!f) return;
-    uint32_t buf[32]={0};
-    size_t nw = fread(buf,4,32,f);
+    uint32_t words[META_V4_WORDS]={0};
+    size_t nw = fread(words,sizeof(uint32_t),META_V4_WORDS,f);
+    int extra = fgetc(f);
     fclose(f);
-    if (nw>=12 && buf[0]==0xD15C0DE7u){
-        if (buf[1]==2 && nw*4>=sizeof(MetaSave)){
-            MetaSave m; memcpy(&m,buf,sizeof(m));
-            if (m.checksum==meta_checksum(&m)) G.meta = m;
-        } else if (buf[1]==1){
-            uint32_t sum=0x1D15C0DE;
-            for (int i=0;i<11;i++) sum=sum*31u+buf[i];
-            if (sum==buf[11]){
-                G.meta.bytes_currency=buf[2]; G.meta.unlocked_weapons=buf[3];
-                G.meta.best_biome=buf[4]; G.meta.runs=buf[5]; G.meta.wins=buf[6];
-                G.meta.true_clear=buf[7]; G.meta.opt_scanline=buf[8]; G.meta.opt_shake=buf[9];
-                G.meta.last_seed=buf[10];
-            }
-        }
+    if (extra!=EOF || words[0]!=0xD15C0DE7u) return;
+    if (words[1]==4 && nw==META_V4_WORDS &&
+        words[META_V4_WORDS-1]==meta_words_checksum(words,META_V4_WORDS-1)){
+        MetaSave m;
+        memcpy(&m,words,sizeof m);
+        G.meta=m;
+    } else if (words[1]==3 && nw==META_V3_WORDS &&
+        words[META_V3_WORDS-1]==meta_words_checksum(words,META_V3_WORDS-1)){
+        MetaSave m;
+        memcpy(&m,words,sizeof m);
+        m.opt_bgm=1; m.opt_sfx=1;
+        G.meta=m;
+    } else if (words[1]==2 && nw==META_V2_WORDS &&
+               words[META_V2_WORDS-1]==meta_words_checksum(words,META_V2_WORDS-1)){
+        MetaSave m={0};
+        m.magic=words[0]; m.version=words[1]; m.bytes_currency=words[2];
+        m.unlocked_weapons=words[3]; m.best_biome=words[4]; m.runs=words[5];
+        m.wins=words[6]; m.true_clear=words[7]; m.opt_scanline=words[8];
+        m.opt_shake=words[9]; m.last_seed=words[10];
+        memcpy(m.upg,&words[11],sizeof m.upg);
+        m.opt_bgm=1; m.opt_sfx=1;
+        G.meta=m;
+    } else if (words[1]==1 && nw==META_V1_WORDS &&
+               words[META_V1_WORDS-1]==meta_words_checksum(words,META_V1_WORDS-1)){
+        MetaSave m={0};
+        m.magic=words[0]; m.version=words[1]; m.bytes_currency=words[2];
+        m.unlocked_weapons=words[3]; m.best_biome=words[4]; m.runs=words[5];
+        m.wins=words[6]; m.true_clear=words[7]; m.opt_scanline=words[8];
+        m.opt_shake=words[9]; m.last_seed=words[10];
+        m.opt_bgm=1; m.opt_sfx=1;
+        G.meta=m;
     }
     if (!(G.meta.unlocked_weapons & (1u<<WPN_SWORD))) G.meta.unlocked_weapons |= 1u<<WPN_SWORD;
 }
@@ -203,6 +236,38 @@ void spawn_pickup(int type, v2 pos, Weapon w, int relic, int core_id){
     }
 }
 
+v2 reward_label_pos(const Pickup* pickup){
+    float x=pickup->pos.x;
+    for (int i=0;i<MAX_PICKUPS;i++){
+        Pickup* other=&G.pickups[i];
+        if (!other->active || other==pickup || (other->type!=PK_WEAPON &&
+            other->type!=PK_RELIC && other->type!=PK_WRELIC)) continue;
+        float gap=fabsf(other->pos.x-pickup->pos.x);
+        if (gap<184.0f)
+            x+=(pickup->pos.x<other->pos.x?-1.0f:1.0f)*(184.0f-gap)*0.5f;
+    }
+    return V2(x,pickup->pos.y+18.0f);
+}
+
+void clear_reward_label_obstacles(void){
+    for (int i=0;i<MAX_PICKUPS;i++){
+        Pickup* pickup=&G.pickups[i];
+        if (!pickup->active || (pickup->type!=PK_WEAPON &&
+            pickup->type!=PK_RELIC && pickup->type!=PK_WRELIC)) continue;
+        v2 label=reward_label_pos(pickup);
+        int tx0=(int)floorf((label.x-90.0f)/TILE);
+        int tx1=(int)floorf((label.x+90.0f)/TILE);
+        int ty0=(int)floorf((label.y-5.0f)/TILE);
+        int ty1=(int)floorf((label.y+70.0f)/TILE);
+        if (tx0<0) tx0=0;
+        if (tx1>G.room.w-1) tx1=G.room.w-1;
+        if (ty0<0) ty0=0;
+        if (ty1>G.room.h-1) ty1=G.room.h-1;
+        for (int ty=ty0;ty<=ty1;ty++) for (int tx=tx0;tx<=tx1;tx++)
+            if (tile_solid(tx,ty)) G.room.tiles[ty][tx]=T_FLOOR;
+    }
+}
+
 void fade_to(int next_state, col3 c){
     G.fade_dir = 1.0f; G.fade_col = c; G.fade_next_state = next_state;
 }
@@ -217,8 +282,6 @@ int player_item_kb(int kb){ return item_kb(kb); }
 int player_used_kb(void){
     int kb = item_kb(weapon_defs[G.pl.weapon.type].kb);
     if (G.pl.weapon.prefix==PFX_COMPRESSED) kb = kb*3/4;
-    for (int i=0;i<RELIC_COUNT;i++) if (G.pl.relics[i]) kb += item_kb(relic_defs[i].kb);
-    for (int i=0;i<2;i++) if (G.pl.wrelics[i]>=0) kb += item_kb(weapon_relic_defs[G.pl.wrelics[i]].kb);
     kb += G.pl.shards * item_kb(64);
     for (int i=0;i<4;i++) if (G.pl.cores & (1<<i)) kb += item_kb(128);
     for (int i=0;i<3;i++) kb += G.memory.kept[i] * item_kb(64);
@@ -228,8 +291,6 @@ int player_used_kb(void){
 // 압축은 용량만 줄이고 이미 획득한 스탯은 유지해야 하므로 스탯은 raw로 계산한다.
 int player_raw_kb(void){
     int kb = weapon_defs[G.pl.weapon.type].kb;
-    for (int i=0;i<RELIC_COUNT;i++) if (G.pl.relics[i]) kb += relic_defs[i].kb;
-    for (int i=0;i<2;i++) if (G.pl.wrelics[i]>=0) kb += weapon_relic_defs[G.pl.wrelics[i]].kb;
     kb += G.pl.shards * 64;
     for (int i=0;i<4;i++) if (G.pl.cores & (1<<i)) kb += 128;
     for (int i=0;i<3;i++) kb += G.memory.kept[i] * 64;
@@ -244,14 +305,43 @@ float player_light_radius(void){
     float r = (62.0f + weight_frac()*58.0f +
                8.0f*(G.memory.kept[MEM_TAG_PROMISE]>2?2:G.memory.kept[MEM_TAG_PROMISE])) *
               (G.pl.relics[RELIC_LUMINANCE] ? 1.3f : 1.0f);
-    r *= 1.0f + G.meta.upg[3]*0.08f;
     return r * G.light_mul;
 }
+static float player_light_progress(void){
+    const float base_radius=62.0f;
+    const float max_radius=(62.0f+58.0f+16.0f)*1.3f;
+    return clampf((player_light_radius()-base_radius)/(max_radius-base_radius),0.0f,1.0f);
+}
+static float player_light_shield_progress(void){
+    return clampf((player_light_radius()-62.0f)/(160.0f-62.0f),0.0f,1.0f);
+}
+float player_light_shield_limit(void){
+    int cap=G.pl.shield_maxhp<5?G.pl.shield_maxhp:5;
+    float start_shield=fminf((float)cap,G.meta.upg[3]*0.5f);
+    float light_shield=floorf(player_light_shield_progress()*(float)cap*2.0f)*0.5f;
+    return fminf((float)cap,start_shield+light_shield);
+}
+void player_sync_light_shield(void){
+    float cap=player_light_shield_limit();
+    G.pl.shield=fminf(cap,G.pl.shield+fmaxf(0.0f,cap-G.pl.light_shield_cap));
+    G.pl.light_shield_cap=cap;
+}
+void player_restore_light_shield(void){
+    player_sync_light_shield();
+    G.pl.shield=fminf(player_light_shield_limit(),G.pl.shield+1.0f);
+}
 float player_speed_mul(void){
-    float w = weight_frac();                       // 물리적 무게(raw) → 기본 이속 곡선
-    float m = w<0.4f ? 1.15f : (w<0.8f ? 1.0f : 0.8f);
+    float m = 1.15f-player_light_progress()*0.55f;
     if (G.pl.relics[RELIC_DEFRAG]) m += (1.0f-capacity_frac())*0.2f; // 디프래그: 빈 '용량'만큼 가속
     return m * (1.0f + G.meta.upg[2]*0.03f);
+}
+float player_attack_damage(void){
+    float damage=weapon_defs[G.pl.weapon.type].dmg;
+    damage *= 1.0f + fminf((float)G.memory.kept[MEM_TAG_COURAGE],2.0f)*0.05f;
+    damage *= 1.0f + weight_frac()*0.5f;
+    damage *= 1.0f + G.meta.upg[1]*0.05f;
+    if (G.pl.relics[RELIC_BADSECTOR] && G.pl.hp<=2.0f) damage*=1.5f;
+    return damage;
 }
 
 // ----------------------------------------------------------- tiles
@@ -397,6 +487,34 @@ static const int biome_enemies[4][6] = {
     { E_GOLEM, E_TURRET, E_CHASER, E_SHIELDER, E_SNIPER, E_HIVE },
     { E_SENTINEL, E_DRONE, E_SNIPER, E_SHIELDER, E_GOLEM, E_TURRET },
 };
+
+static const char* story_biome_entry_notice(int biome){
+    static const char* notices[4]={
+        "정상 인덱스가 신호를 붙잡았다.",
+        "읽힌 흔적이 오래된 놀이를 비춘다.",
+        "흩어진 기록 사이에 작별이 남아 있다.",
+        "마지막 판독 신호가 복구를 기다린다.",
+    };
+    return biome>=0&&biome<4?notices[biome]:"복구 신호가 잠시 흔들린다.";
+}
+
+static uint8_t story_entry_notice_mask;
+static bool story_emit_biome_entry_notice(int biome,int idx){
+    uint8_t bit;
+    if (idx!=0 || biome<0 || biome>=4) return false;
+    bit=(uint8_t)(1u<<biome);
+    if (story_entry_notice_mask&bit) return false;
+    story_entry_notice_mask|=bit;
+    set_msg(story_biome_entry_notice(biome));
+    return true;
+}
+
+#ifdef DD_DEBUG
+void dd_debug_story_entry_notice_reset(void){ story_entry_notice_mask=0; }
+int dd_debug_story_entry_notice_probe(int biome,int idx){
+    return story_emit_biome_entry_notice(biome,idx)?1:0;
+}
+#endif
 
 // 입구 벽 방향에 따른 플레이어 스폰 타일 (2.5칸 안쪽 중앙)
 static v2 spawn_pos_for(int entry_dir, int w, int h){
@@ -605,6 +723,7 @@ void room_generate(int biome, int idx, int promise, int entry_dir){
     G.pl.vel = V2(0,0);
     G.pl.glaive_out=false;
     G.room_t=0;
+    story_emit_biome_entry_notice(biome,idx);
 }
 
 void open_doors(void){
@@ -822,8 +941,15 @@ void on_room_cleared(void){
             spawn_pickup(PK_SHARD,c,(Weapon){0,0},0,0); break;
     }
     // 추가: 추억 조각 확률 + 바이트
-    if (r->promise!=PROMISE_SHARD && rng_i(&room_rng,3)==0)
-        spawn_pickup(PK_SHARD,v2add(c,V2(30,10)),(Weapon){0,0},0,0);
+    int shard_drops=r->promise==PROMISE_SHARD?1:0;
+    if (r->promise!=PROMISE_SHARD && rng_i(&room_rng,3)==0) shard_drops++;
+    for (int i=0;i<shard_drops;i++){
+        v2 offset=i==0?V2(0,0):V2(rng_range(&room_rng,-30,30),rng_range(&room_rng,-20,20));
+        if (i>0 || r->promise!=PROMISE_SHARD)
+            spawn_pickup(PK_SHARD,v2add(c,offset),(Weapon){0,0},0,0);
+        if (rng_i(&room_rng,5)<3)
+            spawn_pickup(PK_SHARD,v2add(c,v2add(offset,V2(20,10))),(Weapon){0,0},0,0);
+    }
     for (int i=0;i<2+rng_i(&room_rng,3);i++)
         spawn_pickup(PK_BYTE,v2add(c,V2(rng_range(&room_rng,-40,40),rng_range(&room_rng,-30,30))),(Weapon){0,0},0,0);
     if (!r->is_boss && r->idx == 1 + (int)((G.run_seed >> (r->biome*3)) % 7u)){
@@ -836,12 +962,13 @@ void on_room_cleared(void){
     }
 }
 
-void start_run_with_seed(uint32_t seed){
+static void start_run_with_seed_internal(uint32_t seed,bool save_meta){
     memset(&G.memory,0,sizeof(G.memory));
     memset(&G.pl,0,sizeof(G.pl));
     G.pl.wrelics[0]=G.pl.wrelics[1]=-1;
     memset(G.floaters,0,sizeof(G.floaters));
     G.pl.maxhp = 3 + (int)G.meta.upg[0]; // 기본 3칸, 영구 강화로 최대 8칸
+    G.pl.shield_maxhp = G.pl.maxhp;
     G.pl.hp = (float)G.pl.maxhp;
     // 잠긴 무기 선택 시 기본 무기로
     if (!((G.meta.unlocked_weapons>>G.title_weapon)&1)) G.title_weapon=WPN_SWORD;
@@ -853,6 +980,8 @@ void start_run_with_seed(uint32_t seed){
     G.kills = 0;
     G.ambient_mul = 1.0f;
     G.light_mul = 1.0f;
+    G.pl.shield = fminf(player_light_shield_limit(),G.meta.upg[3]*0.5f);
+    G.pl.light_shield_cap = player_light_shield_limit();
     G.timescale = 1.0f;
     G.hitstop = 0; G.shake = 0;
     G.ending = -1;
@@ -863,11 +992,19 @@ void start_run_with_seed(uint32_t seed){
     else G.run_seed = (uint32_t)(stm_now()&0xFFFFFFFFu) | 1u;
     G.meta.last_seed = G.run_seed;
     G.meta.runs++;
-    meta_save();
+    story_entry_notice_mask=0;
+    set_msg("W,A,S,D : 이동 · 마우스 : 공격 · Shift : 대시 · E : 줍기 · Q : 버리기 · Tab : 가방");
     room_generate(0,0,PROMISE_NONE,DIR_L);
     for (int i=0;i<256;i++) G.history[i]=G.pl.pos;
     music_set(1);
-    set_msg("WASD 이동 · 마우스 공격 · Shift 대시 · E 줍기 · Q 버리기 · Tab 가방");
+    if (save_meta) meta_save();
+}
+void start_run_with_seed(uint32_t seed){ start_run_with_seed_internal(seed,true); }
+void start_run_after_intro(void){
+    G.meta.intro_seen=1;
+    G.meta.intro_replay_queued=0;
+    start_run_with_seed_internal(G.title_seed,false);
+    meta_save();
 }
 void start_run(void){ start_run_with_seed(G.title_seed); }
 

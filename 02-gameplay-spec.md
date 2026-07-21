@@ -9,7 +9,7 @@
 
 ```
 방 진입 → (어둠) 빛 반경으로 탐색 → 적 등장/처치 → 보상(무기/유물/추억 조각)
-   → 출구 선택(분기) → 다음 방 … → 바이옴 보스 → 다음 바이옴 → 읽기 헤드(엔딩)
+   → 출구 선택(분기) → 다음 방 … → 바이옴 보스 → 다음 바이옴 → 읽기 창(엔딩)
 ```
 
 - 한 방 클리어 30초~90초. 한 바이옴 8~10방 + 보스. 4바이옴.
@@ -32,11 +32,11 @@
 
 - **무결성(HP):** 피격 시 감소. 0이면 데이터 손상 = 사망.
 - **빛 반경:** 시야/안전 영역. 추억 조각 보유량에 비례해 밝아짐.
-- **무게(용량):** 0 ~ **1.44MB**. 무기·유물·추억 조각이 KB 차지.
+- **무게(용량):** 복구 버퍼 0 ~ **1440KB**. 무기·유물·추억 조각이 KB 차지.
 
 ## ⭐ 용량/무게 시스템 (테마의 핵심 메커닉)
 
-가방 총용량 = **1,474,560 bytes (1.44MB)**, UI엔 `1.44MB`로 표기.
+가방 총용량 = **1440KB**, UI엔 `1440KB`로 표기. 이것은 원본 디스크가 아니라 런의 **복구 버퍼**다. 원본 디스크, 복구 버퍼, 복구 이미지, 읽기 창의 정의와 비파괴 규칙은 [04-story.md](04-story.md)의 용어 계약을 따른다.
 
 | 보유량 | 효과 |
 |---|---|
@@ -83,7 +83,7 @@
 | ① 배드 섹터 | 부패 슬라임, 글리치 박쥐 | 느림/돌진, 어둠에 숨음 |
 | ② 잃어버린 트랙 | 메모리 망령, 잔상 추격자 | 플레이어 과거 위치 추적 |
 | ③ 단편화 지대 | 조각 골렘, 포인터 터렛 | 분열, 원거리 사격 |
-| ④ 부트 레코드 | 커널 파수꾼, 삭제 드론 | 패턴 강제, 영역 부정 |
+| ④ 읽기 창 | 커널 파수꾼, 삭제 드론 | 패턴 강제, 영역 부정 |
 
 어둠 활용: 빛 밖 적은 **윤곽(실루엣)만** → 루미넌스/조명 아이템의 가치 부여.
 
@@ -117,7 +117,7 @@
 | 바이옴 ① | 2~9분 | 8방 + 부패충 |
 | 바이옴 ② | 9~16분 | 8방 + 메아리, 핵심 조각 회상 시작 |
 | 바이옴 ③ | 16~23분 | 미로 + 단편기, 무게 압박 정점 |
-| 바이옴 ④ | 23~29분 | 부트 레코드 + NULL |
+| 바이옴 ④ | 23~29분 | 읽기 창 + NULL |
 | 엔딩/에필로그 | 29~31분 | 분기 연출 |
 
 → 무사 완주 시 ~31분. 대부분 첫 플레이는 도중 사망 → 재도전으로 **30분 보장 충족.**
@@ -135,6 +135,13 @@
 
 엔딩의 주요 척추는 변경하지 않는다. 코어 0개는 빈손(BAD), 1~3개는 표준, 4개는 TRUE 엔딩이며 승리 수·`true_clear`·NG+ 해금 규칙도 그대로다. 주요 엔딩 뒤 코다는 보관 수가 가장 큰 태그를 사용하고 동률은 Courage → Kinship → Promise 순서다. 보관이 없고 버린 기록만 있으면 discard-only 코다, 기록이 전혀 없으면 코다가 없다.
 
+## 서사 런타임 불변식
+
+- 첫 실행 프롤로그의 네 막은 신호 획득 → 승리의 흔적 → 읽히지 않은 작별 → 검증된 메시지이며, 자연 완료 전에는 어떤 입력도 런 조작으로 넘기지 않는다. 이후 시작은 프롤로그를 반복하지 않으며, 명시적으로 한 번 다시 보기를 요청했을 때만 한 번 재생한다.
+- 바이옴 진입·`MEM_EVENT_ECHO`·`MEM_EVENT_CORRUPTED`·보스·복구 블록·엔딩에 쓰는 정확한 한국어 카피의 정본은 [04-story.md](04-story.md)의 **네 막 런타임 카피 정본**이다. E/Q 선택, 보상, 이벤트 수, 방 구조, 적 패턴, 보스 체력, 아이템 수치에는 서사 카피가 영향을 주지 않는다.
+- 복구 버퍼의 1440KB 한도, 원시/압축 용량 계산, 무게에 따른 빛·이동·공격 변화, 핵심 조각의 용량 비용은 바꾸지 않는다. 원본 디스크에 쓰거나 포맷하지 않으며, 성공 결과는 별도의 복구 이미지다.
+- 엔딩은 보존한 복구 블록 0개 / 1~3개 / 4개로만 각각 BAD / 표준 / TRUE를 결정한다. TRUE만 기존과 같이 `true_clear`와 뉴게임+를 해금한다. 추억 이벤트 코다의 우선순위 Courage → Kinship → Promise와 discard-only/무코다 규칙도 유지한다.
+
 ## Mac 전용 진단 fixture
 
 진단 바이너리는 `DD_DEBUG_BUILD=1`로 만든다. 아래 명령은 모두 저장소 안에서 실행하며, save fixture는 명령의 `HOME`과 `--isolated-profile`이 정확히 같고 `.dd-agent-owned-profile` 표식이 있는 `build/evidence/mac-first/save/<case>/home`만 허용한다.
@@ -147,10 +154,15 @@ build/DisketteDungeon_diag_mac --seed 12345 --difficulty 1 --weapon 0 --ngplus 0
 
 HOME="$PWD/build/evidence/mac-first/save/valid-v1/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v1/home" --action fixture-save-roundtrip --expect v1
 HOME="$PWD/build/evidence/mac-first/save/valid-v2/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v2/home" --action fixture-save-roundtrip --expect v2
-HOME="$PWD/build/evidence/mac-first/save/bad-v1/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1/home" --action fixture-save-reject --expect v1
-HOME="$PWD/build/evidence/mac-first/save/bad-v2/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2/home" --action fixture-save-reject --expect v2
+HOME="$PWD/build/evidence/mac-first/save/valid-v3-00/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/valid-v3-00/home" --action fixture-save-roundtrip --expect v3
+HOME="$PWD/build/evidence/mac-first/save/bad-v1-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1-checksum/home" --action fixture-save-reject --expect v1
+HOME="$PWD/build/evidence/mac-first/save/bad-v2-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2-checksum/home" --action fixture-save-reject --expect v2
+HOME="$PWD/build/evidence/mac-first/save/bad-v3-checksum/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v3-checksum/home" --action fixture-save-reject --expect v3
+HOME="$PWD/build/evidence/mac-first/save/bad-v1-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v1-length/home" --action fixture-save-reject --expect v1
+HOME="$PWD/build/evidence/mac-first/save/bad-v2-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v2-length/home" --action fixture-save-reject --expect v2
+HOME="$PWD/build/evidence/mac-first/save/bad-v3-length/home" build/DisketteDungeon_diag_mac --isolated-profile "$PWD/build/evidence/mac-first/save/bad-v3-length/home" --action fixture-save-reject --expect v3
 ```
 
-`fixture-save-roundtrip`는 production `meta_load()` → `meta_save()` V2 rewrite → 메모리 clear → production `meta_load()` 순서로 검증하며 68바이트/체크섬 offset 64를 보존한다. `fixture-save-reject`는 체크섬이 틀린 V1/V2를 기본값으로 거부하고 파일을 다시 쓰지 않는다. `fixture-modifiers`, `fixture-haste`, `fixture-endings`는 각각 Courage/Kinship/Promise·용량, Haste의 AI 시간 영역, 코어/코다 매트릭스를 JSONL로 내보내고 고정 불변식을 위반하면 실패한다.
+세이브 wire 계약은 V1=48바이트/12워드, V2=68바이트/17워드, V3=76바이트/19워드다. 현재 writer는 V3을 쓰고 checksum은 offset 72 앞의 18워드를 덮는다. `fixture-save-roundtrip`는 production `meta_load()` → `meta_save()` V3 rewrite → 메모리 clear → production `meta_load()` 순서로 V1/V2 migration과 V3 roundtrip을 검증한다. V1/V2는 각각 자기 길이와 checksum을 검증해 읽고, V3의 새 플래그는 0으로 초기화한다. `fixture-save-reject`는 V1/V2/V3의 잘못된 길이 또는 checksum을 기본값으로 거부하고 파일을 다시 쓰지 않는다. `fixture-modifiers`, `fixture-haste`, `fixture-endings`는 각각 Courage/Kinship/Promise·용량, Haste의 AI 시간 영역, 코어/코다 매트릭스를 JSONL로 내보내고 고정 불변식을 위반하면 실패한다.
 
 이 명령과 결과는 macOS/Metal 개발 증거일 뿐이며 Windows 실행, MinGW/공식 크기, native first-ten, OpenGL 패키징, PresentMon 검증을 주장하지 않는다.
