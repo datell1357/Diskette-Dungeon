@@ -229,7 +229,7 @@ typedef struct {
     // 플래시백
     int fb_core; float fb_t;
     // 엔딩
-    int ending;                // 0 빈손 1 표준 2 트루
+    int ending;                // 0 빈손 1 표준 2 완전 복구 3 진엔딩
     // 타이틀 메뉴
     int menu_sel; int title_weapon; uint32_t title_seed; bool seed_edit;
     int options_return_state;

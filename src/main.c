@@ -499,7 +499,7 @@ static void debug_parse(int argc, char** argv){
         else if(!strcmp(a,"--auto")){ if(DBG_CFG.auto_play)debug_error("duplicate-option"); DBG_CFG.auto_play=1; }
         else if(!strcmp(a,"--god")){ if(DBG_CFG.god)debug_error("duplicate-option"); DBG_CFG.god=1; }
         else if(!strcmp(a,"--intro")){ if(DBG_CFG.intro)debug_error("duplicate-option"); DBG_CFG.intro=1; }
-        else if(!strcmp(a,"--ending")){ debug_need(i,argc); if(DBG_CFG.ending>=0)debug_error("duplicate-option"); DBG_CFG.ending=(int)debug_uint(argv[++i],2); }
+        else if(!strcmp(a,"--ending")){ debug_need(i,argc); if(DBG_CFG.ending>=0)debug_error("duplicate-option"); DBG_CFG.ending=(int)debug_uint(argv[++i],3); }
         else if(!strcmp(a,"--duration-ms")){ debug_need(i,argc); if(DBG_CFG.have_duration)debug_error("duplicate-option"); DBG_CFG.duration_ms=(int)debug_uint(argv[++i],86400000UL); if(DBG_CFG.duration_ms<1)debug_error("out-of-range"); DBG_CFG.have_duration=1; }
         else if(!strcmp(a,"--f10-branch")){ debug_need(i,argc); if(DBG_CFG.have_f10_branch)debug_error("duplicate-option"); if(!strcmp(argv[++i],"keep"))DBG_CFG.f10_branch=1; else if(!strcmp(argv[i],"discard"))DBG_CFG.f10_branch=2; else debug_error("unknown-f10-branch"); DBG_CFG.have_f10_branch=1; }
         else if(!strcmp(a,"--isolated-profile")){ debug_need(i,argc); if(DBG_CFG.have_isolated_profile)debug_error("duplicate-option"); if(!*argv[++i]||strlen(argv[i])>=sizeof DBG_CFG.isolated_profile)debug_error("unsafe-isolated-profile"); strcpy(DBG_CFG.isolated_profile,argv[i]); DBG_CFG.have_isolated_profile=1; }

@@ -89,13 +89,14 @@ static bool branch_promise_label_visible(float y,float cam_y){
     return label_y>=cam_y+84 && label_y<=cam_y+VIRT_H-24;
 }
 
-// 엔딩: 0 빈손 1 표준 2 트루
-static const char* ending_lines[3][4] = {
+// 엔딩: 0 빈손 1 표준 2 완전 복구 3 진엔딩
+static const char* ending_lines[4][4] = {
     { "세 번의 읽기가 끝났다.", "복구 이미지를 만들 수 없었다.", "원본에는 아무것도 쓰지 않는다.", "드라이브가 멎고 원본 디스크는 다시 서랍으로 들어간다.\n읽히지 않은 기억은 돌아오지 않았다." },
     { "복구 블록이 모였다.", "부분 복구 이미지가 메모리에 재구성된다.", "\"...아직 있었네.\"", "읽힌 조각만 별도의 복구 이미지로 남긴다.\n어른은 원본 디스크를 건드리지 않는다." },
     { "네 복구 블록이 맞물렸다.", "복구 이미지가 검증된다.", "\"이 모험을 지우지 마.\"", "어른은 원본 디스크를 버리지 않고,\n복구된 마지막 한 줄을 읽는다." },
+    { "복구 블록이 읽기 창에서 맞물린다.", "던전의 어둠은 원본 디스크의 트랙으로 사라진다.", "원본은 그대로 남아 있다.", "이번에는, 저장한다." },
 };
-static const char* ending_names[3] = { "지워짐", "한 번 더", "전부 기억해" };
+static const char* ending_names[4] = { "지워짐", "한 번 더", "완전 복구", "원본의 이름" };
 
 // ----------------------------------------------------------- biome palette
 static col3 biome_floor(int b){
@@ -1612,7 +1613,107 @@ static const char* memory_coda_text(void){
     if (c==MEM_TAG_COUNT) return "버린 기록들 사이에도, 읽히지 않은 흔적은 남았다.";
     return NULL;
 }
+static float ending_phase(float t,float start,float duration){
+    float x=clampf((t-start)/duration,0,1);
+    return x*x*(3.0f-2.0f*x);
+}
+static void draw_true_ending(void){
+    float t=G.state_t;
+    float cx=VIRT_W*0.36f;
+    float merge=ending_phase(t,2.4f,3.2f);
+    float lift=ending_phase(t,10.0f,3.7f);
+    float reveal=ending_phase(t,13.6f,3.0f);
+    float wake=ending_phase(t,16.8f,3.1f);
+    float disk_y=123.0f-lift*67.0f;
+    static const v2 block_slots[4]={{-28,-18},{28,-18},{-28,18},{28,18}};
+    draw_light_begin(0,0);
+    draw_light_blob(cx,disk_y,50.0f+16.0f*merge,COL(0x9FFFF0),0.18f+0.28f*merge);
+    draw_light_blob(VIRT_W*0.76f,119,24.0f+42.0f*wake,COL(0x9FFFF0),0.15f+0.36f*wake);
+    draw_glow_begin(0,0);
+    draw_glow_blob(cx,disk_y,18.0f+10.0f*merge,COL(0xD8FFF5),0.30f+0.28f*merge);
+    draw_glow_blob(VIRT_W*0.76f,119,12.0f+20.0f*wake,COL(0xD8FFF5),0.22f+0.24f*wake);
+    draw_scene_begin(0,0);
+    draw_quad(0,0,VIRT_W,VIRT_H,COL(0x080A13),1);
+    float world=1.0f-ending_phase(t,5.6f,3.8f);
+    for (int x=16;x<VIRT_W*0.58f;x+=20)
+        draw_line(x,48,x,206,1,COL(0x273653),0.20f*world);
+    for (int y=50;y<208;y+=18)
+        draw_line(0,y,VIRT_W*0.58f,y,1,COL(0x273653),0.20f*world);
+    for (int i=0;i<22;i++){
+        float a=(float)i*0.67f+t*0.35f;
+        float r=18.0f+(float)(i%5)*11.0f;
+        float px=cx+cosf(a)*r*(1.0f-merge*0.74f);
+        float py=125+sinf(a)*r*(1.0f-merge*0.74f);
+        draw_quad(px,py,2,2,COL(0x6B91C4),0.38f*(1.0f-merge));
+    }
+    float drive_x=cx-93, drive_y=119;
+    draw_quad(drive_x,drive_y,186,66,COL(0x314057),1);
+    draw_quad(drive_x+5,drive_y+5,176,56,COL(0x111928),1);
+    draw_quad(drive_x+24,drive_y+16,138,11,COL(0x05080E),1);
+    draw_line(drive_x+24,drive_y+16,drive_x+162,drive_y+16,1,COL(0x849BBE),0.65f);
+    draw_quad(drive_x+149,drive_y+39,9,9,COL(0x3FE0C5),0.55f+0.35f*sinf(t*5.0f));
+    float disk_x=cx-54;
+    draw_quad(disk_x,disk_y-58,108,116,COL(0x52637B),1);
+    draw_quad(disk_x+5,disk_y-53,98,106,COL(0x202B3C),1);
+    draw_quad(disk_x+15,disk_y-42,78,51,COL(0xD8D0AF),0.96f);
+    draw_quad(disk_x+22,disk_y-34,64,7,COL(0x8D9BBC),0.62f);
+    draw_quad(disk_x+22,disk_y-20,64,1,COL(0x53627A),0.68f);
+    draw_quad(disk_x+22,disk_y-13,64,1,COL(0x53627A),0.68f);
+    draw_quad(disk_x+30,disk_y+12,48,30,COL(0x111927),1);
+    draw_ring(cx,disk_y+27,22,COL(0x7FA0C7),0.76f);
+    draw_ring(cx,disk_y+27,12,COL(0xA9C6E8),0.68f);
+    draw_quad(disk_x+13,disk_y+44,82,4,COL(0x8EA3BF),0.72f);
+    for (int i=0;i<4;i++){
+        float a=t*2.5f+(float)i*1.5708f;
+        float sx=cx+cosf(a)*47.0f;
+        float sy=86+sinf(a)*31.0f;
+        float tx=cx+block_slots[i].x;
+        float ty=disk_y-15+block_slots[i].y;
+        float bx=sx+(tx-sx)*merge;
+        float by=sy+(ty-sy)*merge;
+        draw_sprite(SPR_CORE_SHARD,bx,by,11,13,COL(0xFFFFFF),0.82f+0.18f*merge,false,t*4.0f+i);
+    }
+    if (reveal>0){
+        float hx=cx-112+reveal*42.0f;
+        float hy=18+reveal*18.0f;
+        draw_quad(hx,hy,68,23,COL(0xD9A77D),0.82f);
+        draw_quad(hx+49,hy+16,42,14,COL(0xD9A77D),0.82f);
+        draw_quad(hx+84,hy+20,9,7,COL(0xEAC49B),0.88f);
+        for (int i=0;i<10;i++){
+            float px=disk_x+18+(float)((i*19)%68);
+            float py=disk_y-38+(float)((i*13)%35);
+            draw_quad(px,py,1,1,COL(0xFFF0D0),reveal*(0.3f+0.5f*sinf(t*4.0f+i)));
+        }
+    }
+    float mx=VIRT_W*0.65f, my=65;
+    draw_quad(mx,my,152,108,COL(0x44536B),1);
+    draw_quad(mx+6,my+6,140,84,COL(0x07141C),1);
+    draw_quad(mx+52,my+96,48,5,COL(0x8495AE),0.78f);
+    if (wake>0){
+        draw_quad(mx+14,my+14,124,50,COL(0x42B69D),0.18f+0.36f*wake);
+        for (int i=0;i<5;i++) draw_line(mx+20,my+24+i*8,mx+130,my+24+i*8,1,COL(0xB8FFF0),0.18f*wake);
+        draw_sprite(SPR_FLAME,mx+76,my+43,13,15,COL(0xE8FFF8),wake,false,t*3.0f);
+    }
+    draw_ui_begin();
+    draw_text_center("READ WINDOW  //  VERIFIED RECOVERY",VIRT_W*0.76f,40,0.52f,COL(0xB8D8FF),0.94f);
+    if (t<3.2f) draw_text_center("복구 블록이 읽기 창에서 맞물린다.",VIRT_W*0.5f,222,0.62f,COL(0xD8E8FF),1);
+    else if (t<7.0f) draw_text_center("던전의 어둠은 원본 디스크의 트랙으로 사라진다.",VIRT_W*0.5f,222,0.56f,COL(0xD8E8FF),1);
+    else if (t<12.6f) draw_text_center("RECOVERY VERIFIED  //  ORIGINAL UNCHANGED",VIRT_W*0.5f,222,0.54f,COL(0x9FFFF0),1);
+    else if (t<16.8f){
+        draw_text_center("DISKETTE DUNGEON",cx,disk_y-34,0.40f,COL(0x142132),reveal);
+        draw_text_center("DO NOT ERASE",cx,disk_y-11,0.34f,COL(0x142132),reveal);
+        draw_text_center("먼지 아래, 아이의 손글씨가 다시 읽힌다.",VIRT_W*0.5f,222,0.60f,COL(0xFFF0D0),reveal);
+    } else {
+        draw_text_center("이번에는, 저장한다.",VIRT_W*0.5f,222,0.82f,COL(0xFFFFFF),wake);
+        draw_text_center("원본은 그대로 남아 있습니다.",VIRT_W*0.5f,239,0.48f,COL(0x9FFFF0),wake);
+    }
+    if (t>20.5f){
+        draw_text_center("TRUE END — 원본의 이름",VIRT_W*0.5f,150,1.04f,COL(0x9FFFF0),clampf(t-20.5f,0,1));
+        draw_text_center("아무 키 — 에필로그",VIRT_W*0.5f,VIRT_H-18,0.62f,COL(0x8878A8),0.5f+0.3f*sinf(t*4.0f));
+    }
+}
 static void draw_ending(void){
+    if (G.ending==3){ draw_true_ending(); return; }
     float t=G.state_t;
     float cx=VIRT_W*0.33f, cy=VIRT_H*0.48f;
     float spin=t*4.5f;
@@ -1684,7 +1785,7 @@ static void draw_ending(void){
     draw_text_center(ending_lines[G.ending][line],VIRT_W/2,cy+108,0.82f,COL(0xE8E0F8),1);
     if (t>14.0f){
         char buf[64];
-        snprintf(buf,sizeof(buf),"%s END — %s",G.ending==2?"TRUE":(G.ending==0?"BAD":""),ending_names[G.ending]);
+        snprintf(buf,sizeof(buf),"%s END — %s",G.ending==2?"COMPLETE":(G.ending==0?"BAD":""),ending_names[G.ending]);
         draw_text_center(buf,VIRT_W/2,150,1.2f,G.ending==0?COL(0xFF3D7F):COL(0x9FFFF0),clampf((t-14.0f),0,1));
         draw_text_center("아무 키 — 에필로그",VIRT_W/2,VIRT_H-30,0.7f,COL(0x8878A8),0.5f+0.3f*sinf(G.time*4.0f));
     }
@@ -1696,6 +1797,10 @@ static void draw_epilogue(void){
     const char* epi_complete =
         "어른은 원본 디스크를 버리지 않고,\n"
         "복구된 마지막 한 줄을 읽는다.";
+    const char* epi_true =
+        "복구 이미지는 다시 실행되고,\n"
+        "어른은 원본 디스크에 이름을 붙여 보관한다.\n\n"
+        "이번에는, 저장한다.";
     const char* epi_partial =
         "읽힌 조각만 별도의 복구 이미지로 남긴다.\n"
         "어른은 원본 디스크를 건드리지 않는다.";
@@ -1703,7 +1808,7 @@ static void draw_epilogue(void){
         "드라이브가 멎고 원본 디스크는\n"
         "다시 서랍으로 들어간다.\n\n"
         "읽히지 않은 기억은 돌아오지 않았다.";
-    const char* txt = G.ending==0?epi_bad:(G.ending==1?epi_partial:epi_complete);
+    const char* txt = G.ending==0?epi_bad:(G.ending==1?epi_partial:(G.ending==2?epi_complete:epi_true));
     int show=(int)(t*16.0f);
     char buf[512];
     int n=0; const char* q=txt;
@@ -1714,8 +1819,8 @@ static void draw_epilogue(void){
     if (t>3.0f && memory_coda_text())
         draw_text_center(memory_coda_text(),VIRT_W/2,VIRT_H-76,0.68f,
                          COL(0x9FFFF0),clampf(t-3.0f,0,1));
-    if (G.ending==2 && t>16.0f)
-        draw_text_center("...그리고 어딘가, 또 다른 어둠 속에서\n작은 불씨 하나가 깨어난다.  [NG+ 해금]",
+    if (G.ending==3 && t>16.0f)
+        draw_text_center("...그리고 어딘가, 또 다른 어둠 속에서\n작은 불씨 하나가 깨어난다.  [New Game+ 해금]",
                          VIRT_W/2,VIRT_H-58,0.75f,COL(0x9FFFF0),clampf(t-16.0f,0,1));
     if (t>4.0f)
         draw_text_center("아무 키 — 처음으로",VIRT_W/2,VIRT_H-24,0.7f,COL(0x8878A8),0.5f+0.3f*sinf(G.time*4.0f));
@@ -2040,7 +2145,7 @@ static void debug_drive(float dt){
         if (G.state_t>1.2f){ G.state=ST_TITLE; G.state_t=0; }
         break;
     case ST_ENDING:
-        if (G.state_t>17.0f){ G.state=ST_EPILOGUE; G.state_t=0; }
+        if (G.state_t>(G.ending==3?23.0f:17.0f)){ G.state=ST_EPILOGUE; G.state_t=0; }
         break;
     case ST_EPILOGUE:
         if (G.state_t>22.0f){ music_set(0); G.state=ST_TITLE; G.state_t=0; }
@@ -2591,7 +2696,7 @@ static void apply_fade_action(void);
 static int resolve_ending_result(uint8_t core_bits);
 static void debug_fixture_endings(void){
     static const char* coda_names[6]={"none","discard-only","courage","kinship","promise","courage-tie"};
-    MetaSave meta_before=G.meta; int core_count,coda;
+    MetaSave meta_before=G.meta; int core_count,coda,difficulty;
     printf("{\"schema\":1,\"kind\":\"fixture_start\",\"fixture\":\"endings\"}\n");
     memset(G.pickups,0,sizeof G.pickups);
     G.pl.cores=0; G.pl.shards=0;
@@ -2608,7 +2713,7 @@ static void debug_fixture_endings(void){
     debug_invariant("ending-core-repickup-threshold",1,resolve_ending_result(G.pl.cores));
     printf("{\"schema\":1,\"kind\":\"core_drop_repickup\",\"core_id\":2,\"bits_after_repickup\":%u,\"ending\":%d,\"status\":\"pass\"}\n",
            G.pl.cores,resolve_ending_result(G.pl.cores));
-    for(core_count=0;core_count<=4;core_count++)for(coda=0;coda<6;coda++){
+    for(difficulty=0;difficulty<3;difficulty++)for(core_count=0;core_count<=4;core_count++)for(coda=0;coda<6;coda++){
         memset(&G.memory,0,sizeof G.memory);
         G.pl.cores=core_count==4?15:(core_count==0?0:(1<<core_count)-1);
         if(coda==1)G.memory.discarded[MEM_TAG_COURAGE]=1;
@@ -2616,27 +2721,27 @@ static void debug_fixture_endings(void){
         if(coda==3)G.memory.kept[MEM_TAG_KINSHIP]=1;
         if(coda==4)G.memory.kept[MEM_TAG_PROMISE]=1;
         if(coda==5){G.memory.kept[MEM_TAG_COURAGE]=1;G.memory.kept[MEM_TAG_KINSHIP]=1;}
-        G.meta=meta_before; G.ngplus=false; G.room.biome=3; G.fade_next_state=-3;
+        G.meta=meta_before; G.difficulty=difficulty; G.ngplus=false; G.room.biome=3; G.fade_next_state=-3;
         G.bytes_run=0; G.pl.shards=0; G.state=ST_PLAY;
         apply_fade_action();
         int ending=G.ending;
         int expected_coda=
             coda==0?-1:(coda==1?MEM_TAG_COUNT:(coda==2||coda==5?MEM_TAG_COURAGE:coda==3?MEM_TAG_KINSHIP:MEM_TAG_PROMISE));
-        debug_invariant("ending-major",core_count==4?2:(core_count==0?0:1),ending);
+        debug_invariant("ending-major",core_count==4?(difficulty==2?3:2):(core_count==0?0:1),ending);
         debug_invariant("ending-coda",expected_coda,memory_coda());
         debug_invariant("ending-wins",1,(int)G.meta.wins-(int)meta_before.wins);
-        debug_invariant("ending-true-clear",core_count==4?1:0,
+        debug_invariant("ending-true-clear",core_count==4&&difficulty==2?1:0,
                         (int)G.meta.true_clear-(int)meta_before.true_clear);
-        debug_invariant("ending-ngplus-unlock",core_count==4?1:0,G.ngplus?1:0);
+        debug_invariant("ending-ngplus-unlock",core_count==4&&difficulty==2?1:0,G.ngplus?1:0);
         debug_invariant("ending-unlocks",0,
                         G.meta.unlocked_weapons!=meta_before.unlocked_weapons);
-        printf("{\"schema\":1,\"kind\":\"ending\",\"fixture\":\"endings\",\"cores\":%d,\"ending\":%d,\"coda\":\"%s\",\"wins_delta\":%d,\"true_clear_delta\":%d,\"unlocks_changed\":%d,\"ngplus_changed\":0,\"ngplus_unlocked\":%d}\n",
-               core_count,ending,coda_names[coda],(int)G.meta.wins-(int)meta_before.wins,
+        printf("{\"schema\":1,\"kind\":\"ending\",\"fixture\":\"endings\",\"difficulty\":%d,\"cores\":%d,\"ending\":%d,\"coda\":\"%s\",\"wins_delta\":%d,\"true_clear_delta\":%d,\"unlocks_changed\":%d,\"ngplus_changed\":0,\"ngplus_unlocked\":%d}\n",
+               difficulty,core_count,ending,coda_names[coda],(int)G.meta.wins-(int)meta_before.wins,
                (int)G.meta.true_clear-(int)meta_before.true_clear,
                G.meta.unlocked_weapons!=meta_before.unlocked_weapons,G.ngplus?1:0);
     }
     G.meta=meta_before;
-    printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"endings\",\"status\":\"pass\",\"major_mapping\":\"0=bad,1-3=standard,4=true\"}\n");
+    printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"endings\",\"status\":\"pass\",\"major_mapping\":\"0=bad,1-3=standard,4=complete,hard+4=true\"}\n");
 }
 static void debug_emit_save_wire(int version){
     uint32_t w[17]={0}; int n=version==1?12:17;
@@ -3832,7 +3937,7 @@ void game_init(void){
 static int resolve_ending_result(uint8_t core_bits){
     int core_count=0;
     for (int i=0;i<4;i++) if (core_bits&(1<<i)) core_count++;
-    return core_count==4?2:(core_count==0?0:1);
+    return core_count==4?(G.difficulty==2?3:2):(core_count==0?0:1);
 }
 
 static void apply_fade_action(void){
@@ -3856,7 +3961,7 @@ static void apply_fade_action(void){
             G.meta.wins++;
             G.meta.bytes_currency += (uint32_t)G.bytes_run + (uint32_t)(G.pl.shards*5);
             G.meta.best_biome=3;
-            if (G.ending==2){ G.meta.true_clear=1; G.ngplus=true; }
+            if (G.ending==3){ G.meta.true_clear=1; G.ngplus=true; }
             meta_save();
             G.state=ST_ENDING; G.state_t=0;
             music_set(6);
@@ -4259,7 +4364,7 @@ void game_event(const sapp_event* e){
         }
         break;
     case ST_ENDING:
-        if (anykey && G.state_t>14.5f){
+        if (anykey && G.state_t>(G.ending==3?21.0f:14.5f)){
             G.state=ST_EPILOGUE; G.state_t=0;
         }
         break;
