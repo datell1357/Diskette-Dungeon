@@ -551,27 +551,49 @@ void room_generate(int biome, int idx, int promise, int entry_dir){
         r->tiles[y][x] = (x==0||y==0||x==W-1||y==H-1)? T_WALL : T_FLOOR;
 
     if (!r->is_boss){
-        int used[9]={0};
+        int px[4],py[4],pw[4],ph[4],placed=0;
         int count=2+rng_i(&room_rng,3);
         for (int n=0;n<count;n++){
-            int slot;
-            do { slot=rng_i(&room_rng,9); } while (slot==4 || used[slot]);
-            used[slot]=1;
-            int col=slot%3, row=slot/3;
-            int x0=2+col*(W-4)/3, x1=2+(col+1)*(W-4)/3-1;
-            int y0=2+row*(H-4)/3, y1=2+(row+1)*(H-4)/3-1;
-            int shape=rng_i(&room_rng,4);
-            int x=x0+rng_i(&room_rng,(x1-x0)-2);
-            int y=y0+rng_i(&room_rng,(y1-y0)-2);
+            int shape=rng_i(&room_rng,8), mw, mh;
+            if (shape==0){ mw=3; mh=2; }
+            else if (shape==3){ mw=4; mh=1; }
+            else if (shape==4){ mw=1; mh=4; }
+            else if (shape==7){ mw=4; mh=3; }
+            else { mw=3; mh=3; }
+            int x=0,y=0,ok=0;
+            for (int attempt=0;attempt<24;attempt++){
+                x=2+rng_i(&room_rng,W-mw-3);
+                y=2+rng_i(&room_rng,H-mh-3);
+                if (x<W/2+5 && x+mw>W/2-4 && y<H/2+4 && y+mh>H/2-3) continue;
+                bool overlap=false;
+                for (int i=0;i<placed;i++)
+                    if (x<px[i]+pw[i]+1 && x+mw+1>px[i] && y<py[i]+ph[i]+1 && y+mh+1>py[i]) overlap=true;
+                if (!overlap){ ok=1; break; }
+            }
+            if (!ok) continue;
+            px[placed]=x; py[placed]=y; pw[placed]=mw; ph[placed]=mh; placed++;
             if (shape==0){
                 for (int yy=y;yy<y+2;yy++) for (int xx=x;xx<x+3;xx++) r->tiles[yy][xx]=T_WALL;
             } else if (shape==1){
                 for (int yy=y;yy<y+3;yy++) r->tiles[yy][x]=T_WALL;
                 for (int xx=x;xx<x+3;xx++) r->tiles[y+2][xx]=T_WALL;
             } else if (shape==2){
+                for (int yy=y;yy<y+3;yy++) r->tiles[yy][x]=T_WALL;
+                for (int xx=x;xx<x+3;xx++) r->tiles[y][xx]=T_WALL;
+            } else if (shape==3){
                 for (int xx=x;xx<x+4;xx++) r->tiles[y][xx]=T_WALL;
-            } else {
+            } else if (shape==4){
                 for (int yy=y;yy<y+4;yy++) r->tiles[yy][x]=T_WALL;
+            } else if (shape==5){
+                for (int xx=x;xx<x+3;xx++) r->tiles[y][xx]=T_WALL;
+                for (int yy=y+1;yy<y+3;yy++) r->tiles[yy][x+1]=T_WALL;
+            } else if (shape==6){
+                for (int yy=y;yy<y+3;yy++){ r->tiles[yy][x]=T_WALL; r->tiles[yy][x+2]=T_WALL; }
+                r->tiles[y+2][x+1]=T_WALL;
+            } else {
+                r->tiles[y][x]=T_WALL; r->tiles[y][x+1]=T_WALL;
+                r->tiles[y+1][x+1]=T_WALL; r->tiles[y+1][x+2]=T_WALL;
+                r->tiles[y+2][x+2]=T_WALL; r->tiles[y+2][x+3]=T_WALL;
             }
         }
     }
