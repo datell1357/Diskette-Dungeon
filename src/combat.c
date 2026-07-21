@@ -1468,9 +1468,24 @@ void player_drop_shard(void){
 }
 
 // ----------------------------------------------------------- main update
+static void update_enemy_feedback(float dt){
+    for (int i=0;i<MAX_ENTITIES;i++){
+        EnemyFeedback* feedback=&G.enemy_feedback[i];
+        if (feedback->t<=0) continue;
+        feedback->t-=dt;
+        Entity* e=&G.ents[i];
+        if (e->active && e->player_damaged){
+            feedback->pos=e->pos;
+            feedback->hp=clampf(e->hp/e->maxhp,0.0f,1.0f);
+            feedback->radius=e->radius;
+            feedback->elite=e->elite;
+        }
+    }
+}
+
 void update_play(float dt){
     Player* p=&G.pl;
-    for (int i=0;i<MAX_ENTITIES;i++) if (G.enemy_feedback[i].t>0) G.enemy_feedback[i].t-=dt;
+    update_enemy_feedback(dt);
     clear_reward_label_obstacles();
     player_sync_light_shield();
     G.run_time += dt;

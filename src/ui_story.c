@@ -2482,6 +2482,12 @@ static void debug_fixture_modifiers(void){
     enemy_damage(&G.ents[0],2.0f,G.pl.pos,0,0,false,true,2);
     debug_invariant("one-shot-hit-feedback-hp",0,(int)lroundf(G.enemy_feedback[0].hp*1000.0f));
     debug_invariant("one-shot-hit-feedback-visible",1,G.enemy_feedback[0].t>0.0f?1:0);
+    G.ents[0]=(Entity){true,E_SLIME,V2(120,96),V2(0,0),5.0f,5.0f,7.0f};
+    enemy_damage(&G.ents[0],1.0f,G.pl.pos,0,0,false,true,3);
+    G.ents[0].pos=V2(168,112);
+    update_enemy_feedback(0.1f);
+    debug_invariant("enemy-feedback-follows-x",168000,(int)lroundf(G.enemy_feedback[0].pos.x*1000.0f));
+    debug_invariant("enemy-feedback-follows-y",112000,(int)lroundf(G.enemy_feedback[0].pos.y*1000.0f));
     memset(G.pickups,0,sizeof G.pickups);
     G.pickups[0]=(Pickup){true,PK_RELIC,{0,0},RELIC_LUMINANCE,0,G.pl.pos,0};
     v2 reward_label=reward_label_pos(&G.pickups[0]);
