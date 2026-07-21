@@ -205,7 +205,7 @@ static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool 
         for (int i=0;i<MAX_ENTITIES;i++) if (e==&G.ents[i]){
             EnemyFeedback* feedback=&G.enemy_feedback[i];
             feedback->pos=e->pos;
-            feedback->t=0.9f;
+            feedback->t=3.0f;
             feedback->hp=clampf(e->hp/e->maxhp,0.0f,1.0f);
             feedback->damage=dmg;
             feedback->radius=e->radius;

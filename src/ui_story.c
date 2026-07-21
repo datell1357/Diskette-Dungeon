@@ -133,17 +133,20 @@ static void draw_enemy_player_feedback(const EnemyFeedback* feedback){
     if (sx<-24 || sx>VIRT_W+24 || sy<-24 || sy>VIRT_H+24) return;
     float bar_w=clampf(feedback->radius*2.8f,18.0f,34.0f);
     float x=clampf(feedback->pos.x,G.cam.x+bar_w*0.5f+3.0f,G.cam.x+VIRT_W-bar_w*0.5f-3.0f);
-    float y=clampf(feedback->pos.y-feedback->radius*1.6f-9.0f,G.cam.y+16.0f,G.cam.y+VIRT_H-8.0f);
+    float y=clampf(feedback->pos.y-feedback->radius*0.8f-4.5f,G.cam.y+16.0f,G.cam.y+VIRT_H-8.0f);
     draw_quad(x-bar_w*0.5f-1,y-1,bar_w+2,4,COL(0x08050D),0.9f);
     draw_quad(x-bar_w*0.5f,y,bar_w*feedback->hp,2,feedback->elite?COL(0xFFD060):COL(0xFF3D7F),0.95f);
-    char damage[24];
-    float rise=(0.9f-feedback->t)*10.0f;
-    float text_y=clampf(y-8.0f-rise,G.cam.y+5.0f,G.cam.y+VIRT_H-12.0f);
-    if (feedback->crit) snprintf(damage,sizeof(damage),"치명 %d",(int)lroundf(feedback->damage));
-    else snprintf(damage,sizeof(damage),"%d",(int)lroundf(feedback->damage));
-    draw_text_center(damage,x,text_y,feedback->crit?0.58f:0.52f,
-                     feedback->crit?COL(0xFFD060):COL(0xFFFFFF),
-                     clampf(feedback->t/0.18f,0,1));
+    float damage_t=feedback->t-2.1f;
+    if (damage_t>0){
+        char damage[24];
+        float rise=(0.9f-damage_t)*10.0f;
+        float text_y=clampf(y-8.0f-rise,G.cam.y+5.0f,G.cam.y+VIRT_H-12.0f);
+        if (feedback->crit) snprintf(damage,sizeof(damage),"치명 %d",(int)lroundf(feedback->damage));
+        else snprintf(damage,sizeof(damage),"%d",(int)lroundf(feedback->damage));
+        draw_text_center(damage,x,text_y,feedback->crit?0.58f:0.52f,
+                         feedback->crit?COL(0xFFD060):COL(0xFFFFFF),
+                         clampf(damage_t/0.18f,0,1));
+    }
 }
 
 // ----------------------------------------------------------- play drawing
@@ -2488,6 +2491,7 @@ static void debug_fixture_modifiers(void){
     update_enemy_feedback(0.1f);
     debug_invariant("enemy-feedback-follows-x",168000,(int)lroundf(G.enemy_feedback[0].pos.x*1000.0f));
     debug_invariant("enemy-feedback-follows-y",112000,(int)lroundf(G.enemy_feedback[0].pos.y*1000.0f));
+    debug_invariant("enemy-feedback-visible-after-0.1s",2900,(int)lroundf(G.enemy_feedback[0].t*1000.0f));
     memset(G.pickups,0,sizeof G.pickups);
     G.pickups[0]=(Pickup){true,PK_RELIC,{0,0},RELIC_LUMINANCE,0,G.pl.pos,0};
     v2 reward_label=reward_label_pos(&G.pickups[0]);
