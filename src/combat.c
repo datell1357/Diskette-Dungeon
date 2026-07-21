@@ -677,6 +677,10 @@ static float boss_damage(float base){
     return base+(G.difficulty==2?0.5f:0.0f);
 }
 
+static float boss_barrage_cooldown(float hard_interval){
+    return hard_interval+(2-G.difficulty)*0.625f;
+}
+
 static void boss_radial(Entity* e,int n,float speed,float offset){
     for (int i=0;i<n;i++){
         float a = offset + i*6.2832f/n;
@@ -804,7 +808,7 @@ static void update_boss(Entity* e,float dt){
                 e->vel = v2scale(e->vel,1.0f-2.0f*dt);
                 if (e->t0<=0){
                     boss_radial(e,12,110.0f,rng_f(&crng)*6.28f);
-                    e->state=0; e->t0=0.75f; e->t1=0;
+                    e->state=0; e->t0=boss_barrage_cooldown(0.75f); e->t1=0;
                 }
             }
             break;
@@ -812,8 +816,8 @@ static void update_boss(Entity* e,float dt){
             if (e->t0<=0){
                 boss_radial(e,20,120.0f,rng_f(&crng)*6.28f);
                 e->t1++;
-                e->t0=0.52f/spd;
-                if (e->t1>=4){ e->state=0; e->t0=1.0f; e->t1=0; }
+                e->t0=boss_barrage_cooldown(0.52f/spd);
+                if (e->t1>=4){ e->state=0; e->t0=boss_barrage_cooldown(1.0f); e->t1=0; }
             }
             break;
         case 3: { // 슬라임 소환 + 견제탄
@@ -824,14 +828,14 @@ static void update_boss(Entity* e,float dt){
                 burst(e->pos,8,COL(0xFF3D7F),100,0.5f,2,true);
             }
             boss_radial(e,14,105.0f,rng_f(&crng)*6.28f);
-            e->state=0; e->t0=1.15f;
+            e->state=0; e->t0=boss_barrage_cooldown(1.15f);
         } break;
         case 4:
             if (e->t0<=0){
                 boss_ring_gap(e,22,125.0f,atan2f(dir.y,dir.x));
                 e->t1++;
-                e->t0=0.46f/spd;
-                if (e->t1>=3){ e->state=0; e->t0=0.9f; e->t1=0; }
+                e->t0=boss_barrage_cooldown(0.46f/spd);
+                if (e->t1>=3){ e->state=0; e->t0=boss_barrage_cooldown(0.9f); e->t1=0; }
             }
             break;
         }
@@ -864,8 +868,8 @@ static void update_boss(Entity* e,float dt){
                 }
                 sfx_play(SFX_SHOOT);
                 e->t2++;
-                e->t0=0.11f;
-                if (e->t2>=6){ e->state=2; e->t0=0.55f; e->t2=0; }
+                e->t0=boss_barrage_cooldown(0.11f);
+                if (e->t2>=6){ e->state=2; e->t0=boss_barrage_cooldown(0.55f); e->t2=0; }
             }
             break;
         case 2: // 텔레포트 + 메아리 사격: 플레이어의 '과거 자취'를 쫓는 탄 (ECHO 고유)
@@ -881,14 +885,14 @@ static void update_boss(Entity* e,float dt){
                     spawn_bullet(false,7,e->pos,v2scale(d,180.0f),1,3.2f,4,0);
                 }
                 sfx_play(SFX_SHOOT);
-                e->state=3; e->t0=0.32f;
+                e->state=3; e->t0=boss_barrage_cooldown(0.32f);
             }
             break;
         case 3:
             if (e->t0<=0){
                 boss_ring_gap(e,22,115.0f,atan2f(dir.y,dir.x));
                 boss_spread(e,dir,5,0.14f,185.0f);
-                e->state=0; e->t0=rng_range(&crng,0.85f,1.4f);
+                e->state=0; e->t0=boss_barrage_cooldown(rng_range(&crng,0.85f,1.4f));
             }
             break;
         }
@@ -945,8 +949,8 @@ static void update_boss(Entity* e,float dt){
                 spawn_bullet(false,7,e->pos,v2scale(d,230.0f),1,2.5f,4,0);
                 sfx_play(SFX_SHOOT);
                 e->t1++;
-                e->t0=0.10f;
-                if (e->t1>=16){ e->state=0; e->t0=0.9f; e->t1=0; }
+                e->t0=boss_barrage_cooldown(0.10f);
+                if (e->t1>=16){ e->state=0; e->t0=boss_barrage_cooldown(0.9f); e->t1=0; }
             }
             break;
         case 4: // 추적 타격: 플레이어와 예측 위치에 위험구역 (3파)
@@ -1017,19 +1021,19 @@ static void update_boss(Entity* e,float dt){
                 case 0: // 역방향 이중 나선
                     boss_radial(e,6,105.0f, e->t1*2.0f);
                     boss_radial(e,6,105.0f,-e->t1*2.0f);
-                    e->t2++; e->t0=0.12f;
-                    if (e->t2>=12){ e->state=1; e->t2=0; e->t0=0.4f; }
+                    e->t2++; e->t0=boss_barrage_cooldown(0.12f);
+                    if (e->t2>=12){ e->state=1; e->t2=0; e->t0=boss_barrage_cooldown(0.4f); }
                     break;
                 case 1: // 꽃: 속도 다른 이중 링
                     boss_radial(e,18,80.0f,rng_f(&crng)*6.28f);
                     boss_radial(e,18,118.0f,0.224f);
-                    e->t2++; e->t0=0.7f;
-                    if (e->t2>=3){ e->state=2; e->t2=0; e->t0=0.4f; }
+                    e->t2++; e->t0=boss_barrage_cooldown(0.7f);
+                    if (e->t2>=3){ e->state=2; e->t2=0; e->t0=boss_barrage_cooldown(0.4f); }
                     break;
                 default: // 조준 산탄 연사
                     boss_spread(e,dir,7,0.16f,175.0f);
-                    e->t2++; e->t0=0.5f;
-                    if (e->t2>=3){ e->state=0; e->t2=0; e->t0=0.8f; }
+                    e->t2++; e->t0=boss_barrage_cooldown(0.5f);
+                    if (e->t2>=3){ e->state=0; e->t2=0; e->t0=boss_barrage_cooldown(0.8f); }
                     break;
                 }
             }
@@ -1055,7 +1059,7 @@ static void update_boss(Entity* e,float dt){
                     else if (pat==1){ boss_radial(e,14,100.0f,0.0f); boss_radial(e,14,140.0f,0.314f); } // 이중 링
                     else boss_spread(e,dir,9,0.14f,185.0f); // 광각 산탄
                     e->t2++;
-                    e->state=0; e->t0=rng_range(&crng,0.7f,1.0f);
+                    e->state=0; e->t0=boss_barrage_cooldown(rng_range(&crng,0.7f,1.0f));
                 }
                 break;
             }
@@ -1068,7 +1072,7 @@ static void update_boss(Entity* e,float dt){
                 boss_radial(e,5,150.0f,e->t1*3.0f+3.1416f);
                 e->t2++;
                 if (((int)e->t2)%6==0) boss_ring_gap(e,28,100.0f,rng_f(&crng)*6.28f);
-                e->t0=0.08f;
+                e->t0=boss_barrage_cooldown(0.08f);
             }
         }
     } break;

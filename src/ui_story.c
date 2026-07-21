@@ -88,6 +88,9 @@ static bool branch_promise_label_visible(float y,float cam_y){
     float label_y=y+14;
     return label_y>=cam_y+84 && label_y<=cam_y+VIRT_H-24;
 }
+static bool branch_promise_guidance_visible(void){
+    return G.room.cleared && G.room.door_count==2 && G.difficulty==0;
+}
 
 // 엔딩: 0 빈손 1 표준 2 완전 복구 3 진엔딩
 static const char* ending_lines[4][4] = {
@@ -271,7 +274,8 @@ void draw_play(void){
             const char* label=branch_promise_display_label(pr);
             v2 label_pos=branch_promise_label_pos(dx,dy,cx,cy,label);
             draw_sprite(icon,dx,dy+bob,12,12,COL(0xFFFFFF),1,false,0);
-            if (pr==PROMISE_WEAPON || branch_promise_label_visible(dy,cy))
+            if (branch_promise_guidance_visible() &&
+                (pr==PROMISE_WEAPON || branch_promise_label_visible(dy,cy)))
                 draw_text_center(label,label_pos.x,label_pos.y,0.42f,COL(0xE8E0F8),0.9f);
         }
     }
@@ -1267,12 +1271,17 @@ static void draw_weapon_select(void){
         draw_text(line,x+8,y+27,0.42f,COL(0xC8C0E0),1);
         snprintf(line,sizeof line,"KB %d · %s",weapon_defs[i].kb,modes[i]);
         draw_text(line,x+8,y+41,0.38f,COL(0xC8C0E0),1);
+        snprintf(line,sizeof line,"%d바이트",cost);
+        draw_text(line,x+8,y+61,0.42f,COL(0xFFD060),1);
         if (i==G.title_weapon) snprintf(line,sizeof line,"현재 선택");
         else if (unlocked) snprintf(line,sizeof line,"구매 완료");
-        else snprintf(line,sizeof line,"%d바이트",cost);
-        draw_text(line,x+8,y+61,0.48f,unlocked?COL(0x9FFFF0):COL(0xFFD060),1);
+        else snprintf(line,sizeof line,"미구매");
+        draw_text(line,x+128-text_width(line,0.42f),y+61,0.42f,
+                  selected?COL(0x9FFFF0):(unlocked?COL(0x9FFFF0):COL(0x8878A8)),1);
     }
-    draw_text_center("A/D 또는 ←/→ : 선택 · Enter : 구매/장착 · Esc : 돌아가기",VIRT_W/2,242,0.46f,COL(0x8878A8),1);
+    draw_text_center("W/S 또는 위/아래 키 : 위/아래 이동",VIRT_W/2,232,0.40f,COL(0x8878A8),1);
+    draw_text_center("A/D 또는 좌/우 키 : 좌/우 이동",VIRT_W/2,242,0.40f,COL(0x8878A8),1);
+    draw_text_center("Enter : 구매/장착 · Esc : 돌아가기",VIRT_W/2,252,0.40f,COL(0x8878A8),1);
 }
 
 static void draw_difficulty_select(void){
@@ -2560,6 +2569,14 @@ static void debug_fixture_modifiers(void){
     update_enemy(&sniper,0,0);
     debug_invariant("sniper-projectile-speed",562500,(int)lroundf(v2len(G.bullets[0].vel)*1000.0f));
     debug_invariant("sniper-projectile-damage",2000,(int)lroundf(G.bullets[0].dmg*1000.0f));
+    int difficulty_before=G.difficulty;
+    for (int difficulty=0;difficulty<3;difficulty++){
+        G.difficulty=difficulty;
+        int extra_ms=(int)lroundf((boss_barrage_cooldown(0.0f)/1.25f)*1000.0f);
+        debug_invariant("boss-barrage-extra-ms",(2-difficulty)*500,extra_ms);
+        printf("{\"schema\":1,\"kind\":\"boss_barrage\",\"fixture\":\"modifiers\",\"difficulty\":%d,\"extra_delay_ms\":%d}\n",difficulty,extra_ms);
+    }
+    G.difficulty=difficulty_before;
     memset(G.pl.relics,0,sizeof G.pl.relics);
     for (int i=0;i<4;i++) G.pl.relics[i]=true;
     G.state=ST_PLAY;
@@ -3460,8 +3477,18 @@ static void debug_fixture_dd_promise_labels(void){
         fprintf(stderr,"{\"error\":\"invariant\",\"what\":\"compressed-shard-promise-label\"}\n");
         exit(3);
     }
+    int difficulty_before=G.difficulty, door_count_before=G.room.door_count;
+    bool cleared_before=G.room.cleared;
+    int branch_guidance[3];
+    G.room.cleared=true; G.room.door_count=2;
+    for (int difficulty=0;difficulty<3;difficulty++){
+        G.difficulty=difficulty;
+        branch_guidance[difficulty]=branch_promise_guidance_visible()?1:0;
+        debug_invariant("branch-guidance-difficulty",difficulty==0?1:0,branch_guidance[difficulty]);
+    }
+    G.difficulty=difficulty_before; G.room.door_count=door_count_before; G.room.cleared=cleared_before;
     G.pl.relics[RELIC_COMPRESS]=false;
-    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-promise-labels\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":0,\"settlement_meta_save_events\":0,\"total_meta_save_events\":0,\"bytes_run\":%d,\"bytes_currency\":%u,\"title_seed\":%u,\"run_seed\":%u,\"title_weapon\":%d,\"difficulty\":%d,\"ngplus\":%d,\"labels\":{\"weapon\":\"%s\",\"relic\":\"%s\",\"shard\":\"%s\",\"heart\":\"%s\"},\"capacity_effect\":[null,null,%d,0],\"effects\":{\"weapon\":null,\"relic\":null,\"shard\":%d,\"heart\":0},\"compressed_shard_label\":\"%s\",\"compressed_shard_effect\":%d,\"bonus_shard_disclosed\":false}\n",debug_source_sha256(),debug_state_name(state_before),debug_state_name(G.state),G.bytes_run,G.meta.bytes_currency,G.title_seed,G.run_seed,G.title_weapon,G.difficulty,G.ngplus,promise_label(PROMISE_WEAPON),promise_label(PROMISE_RELIC),promise_label(PROMISE_SHARD),promise_label(PROMISE_HEART),player_item_kb(64),player_item_kb(64),compressed_shard,compressed_effect);
+    printf("{\"schema\":1,\"source_sha256\":\"%s\",\"action\":\"fixture-ddd-promise-labels\",\"state_before\":\"%s\",\"state_after\":\"%s\",\"settlement_bank_events\":0,\"settlement_meta_save_events\":0,\"total_meta_save_events\":0,\"bytes_run\":%d,\"bytes_currency\":%u,\"title_seed\":%u,\"run_seed\":%u,\"title_weapon\":%d,\"difficulty\":%d,\"ngplus\":%d,\"labels\":{\"weapon\":\"%s\",\"relic\":\"%s\",\"shard\":\"%s\",\"heart\":\"%s\"},\"capacity_effect\":[null,null,%d,0],\"effects\":{\"weapon\":null,\"relic\":null,\"shard\":%d,\"heart\":0},\"compressed_shard_label\":\"%s\",\"compressed_shard_effect\":%d,\"branch_guidance\":[%d,%d,%d],\"bonus_shard_disclosed\":false}\n",debug_source_sha256(),debug_state_name(state_before),debug_state_name(G.state),G.bytes_run,G.meta.bytes_currency,G.title_seed,G.run_seed,G.title_weapon,G.difficulty,G.ngplus,promise_label(PROMISE_WEAPON),promise_label(PROMISE_RELIC),promise_label(PROMISE_SHARD),promise_label(PROMISE_HEART),player_item_kb(64),player_item_kb(64),compressed_shard,compressed_effect,branch_guidance[0],branch_guidance[1],branch_guidance[2]);
 }
 static void debug_fixture_dd_shake_menu(bool roundtrip){
     int before=G.meta.opt_shake, scanline=G.meta.opt_scanline;
@@ -3493,13 +3520,13 @@ static void debug_fixture_dd_options(void){
     debug_invariant("weapon-selector-enter",ST_WEAPON_SELECT,G.state);
     int weapon_before=G.title_weapon;
     debug_dispatch_key(SAPP_KEYCODE_W,false);
-    debug_invariant("weapon-selector-w-prev",(weapon_before+WPN_COUNT-1)%WPN_COUNT,G.title_weapon);
+    debug_invariant("weapon-selector-w-up",(weapon_before+WPN_COUNT-3)%WPN_COUNT,G.title_weapon);
     debug_dispatch_key(SAPP_KEYCODE_S,false);
-    debug_invariant("weapon-selector-s-next",weapon_before,G.title_weapon);
+    debug_invariant("weapon-selector-s-down",weapon_before,G.title_weapon);
     debug_dispatch_key(SAPP_KEYCODE_UP,false);
-    debug_invariant("weapon-selector-up-prev",(weapon_before+WPN_COUNT-1)%WPN_COUNT,G.title_weapon);
+    debug_invariant("weapon-selector-up-row",(weapon_before+WPN_COUNT-3)%WPN_COUNT,G.title_weapon);
     debug_dispatch_key(SAPP_KEYCODE_DOWN,false);
-    debug_invariant("weapon-selector-down-next",weapon_before,G.title_weapon);
+    debug_invariant("weapon-selector-down-row",weapon_before,G.title_weapon);
     debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
     debug_invariant("weapon-selector-return",ST_TITLE,G.state);
     G.menu_sel=3;
@@ -4180,10 +4207,10 @@ void game_event(const sapp_event* e){
     case ST_WEAPON_SELECT:
         if (!kd) break;
         if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_TITLE; G.menu_sel=1; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A||
-                 e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.title_weapon=(G.title_weapon+WPN_COUNT-1)%WPN_COUNT; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D||
-                 e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.title_weapon=(G.title_weapon+1)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_LEFT||e->key_code==SAPP_KEYCODE_A){ G.title_weapon=(G.title_weapon+WPN_COUNT-1)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_RIGHT||e->key_code==SAPP_KEYCODE_D){ G.title_weapon=(G.title_weapon+1)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.title_weapon=(G.title_weapon+WPN_COUNT-3)%WPN_COUNT; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.title_weapon=(G.title_weapon+3)%WPN_COUNT; sfx_play(SFX_UI); }
         else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE){
             bool unlocked=(G.meta.unlocked_weapons&(1u<<G.title_weapon))!=0;
             uint32_t cost=(uint32_t)weapon_unlock_cost(G.title_weapon);
