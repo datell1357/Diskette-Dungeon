@@ -2,7 +2,7 @@
 
 > 1.44MB 디스켓에 남은 마지막 정상 인덱스 조각이, 원본에 기록하지 않는 단 한 번의 복구 패스를 따라 읽기 창으로 향하는 픽셀 액션 로그라이크.
 
-**Diskette Dungeon: The Last Read**는 절차적으로 생성한 그래픽과 신스 오디오로 만든 Windows 단독 실행형 게임입니다. 플레이어는 부패한 세이브 안의 작은 빛이 되어, 적을 물리치고 복구 블록과 기억을 보존하며 엔딩을 바꿉니다.
+**Diskette Dungeon: The Last Read**는 절차적으로 생성한 그래픽과 신스 오디오로 만든 Windows·macOS 실행형 게임입니다. 플레이어는 부패한 세이브 안의 작은 빛이 되어, 적을 물리치고 복구 블록과 기억을 보존하며 엔딩을 바꿉니다.
 
 ## 핵심 특징
 
@@ -15,7 +15,10 @@
 
 ## 시작하기
 
-Windows에서는 최신 실행 파일 [`build/DisketteDungeon.exe`](build/DisketteDungeon.exe)를 실행합니다.
+최신 실행 파일은 [Releases](../../releases)에서 받습니다.
+
+- Windows: `DisketteDungeon-1.0.0-win64.exe`
+- macOS: `DisketteDungeon-1.0.0-macos.zip` 압축을 푼 뒤 `DisketteDungeon_mac` 실행
 
 소스에서 빌드하려면 아래를 사용하세요.
 
