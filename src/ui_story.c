@@ -2604,6 +2604,9 @@ static void debug_fixture_modifiers(void){
     debug_invariant("weapon-relic-swap-opens",ST_RELIC_SWAP,G.state);
     player_confirm_relic_swap(1);
     debug_invariant("weapon-relic-swap-replaces-slot",WR_CANNON_FRAG,G.pl.wrelics[1]);
+    G.pl.weapon.type=WPN_WAND; G.pl.wrelics[0]=G.pl.wrelics[1]=-1;
+    int current_weapon_relic=random_unowned_wrelic_for_weapon(G.pl.weapon.type,-1);
+    debug_invariant("boss-relic-offers-current-weapon",WPN_WAND,weapon_relic_defs[current_weapon_relic].weapon);
     debug_invariant("weapon-relic-count",24,WR_COUNT);
     debug_invariant("weapon-relic-sword-phase-kind",WPN_SWORD,weapon_relic_defs[WR_SWORD_PHASE].weapon);
     debug_invariant("weapon-relic-wand-delay-kind",WPN_WAND,weapon_relic_defs[WR_WAND_DELAY].weapon);
@@ -2619,6 +2622,11 @@ static void debug_fixture_modifiers(void){
     G.ents[0]=(Entity){true,E_BAT,V2(120,88),V2(0,0),10.0f,10.0f,7.0f};
     attack_held=true; fire_weapon(0); attack_held=false;
     debug_invariant("sword-wall-blocks-melee",10000,(int)lroundf(G.ents[0].hp*1000.0f));
+    G.pl.wrelics[0]=WR_SWORD_WAVE; G.pl.attack_cd=0;
+    Bullet* wave=spawn_bullet(true,8,G.pl.pos,V2(360,0),3.0f,1.0f,7.0f,999);
+    update_bullets(0.1f);
+    debug_invariant("sword-wave-stops-at-wall",1,wave&&!wave->active?1:0);
+    debug_invariant("sword-wave-wall-blocks-damage",10000,(int)lroundf(G.ents[0].hp*1000.0f));
     G.room.tiles[5][6]=saved_blade_wall;
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(80,80); G.pl.hp=3.0f; G.pl.maxhp=5;

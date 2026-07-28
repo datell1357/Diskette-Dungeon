@@ -116,6 +116,12 @@ static int random_unowned_wrelic(int excluded){
         if (i!=excluded && !player_has_wrelic(i)) choices[count++]=i;
     return count>0? choices[rng_i(&crng,count)] : -1;
 }
+static int random_unowned_wrelic_for_weapon(int weapon, int excluded){
+    int choices[WR_COUNT], count=0;
+    for (int i=0;i<WR_COUNT;i++)
+        if (weapon_relic_defs[i].weapon==weapon && i!=excluded && !player_has_wrelic(i)) choices[count++]=i;
+    return count>0? choices[rng_i(&crng,count)] : -1;
+}
 
 // ----------------------------------------------------------- damage
 static void enemy_finalize_death(Entity* e, int reason){
@@ -156,7 +162,8 @@ static void enemy_finalize_death(Entity* e, int reason){
         G.timescale=0.25f; G.light_mul=1.0f; G.ambient_mul=1.0f;
         int RW=G.room.w,RH=G.room.h;
         spawn_pickup(PK_CORE,V2(RW*TILE*0.5f,RH*TILE*0.5f),(Weapon){0,0},0,G.room.biome);
-        int left_relic=random_unowned_wrelic(-1);
+        int left_relic=random_unowned_wrelic_for_weapon(G.pl.weapon.type,-1);
+        if (left_relic<0) left_relic=random_unowned_wrelic(-1);
         int right_relic=random_unowned_wrelic(left_relic);
         v2 cc=V2(RW*TILE*0.5f,RH*TILE*0.5f);
         if (left_relic>=0) spawn_pickup(PK_WRELIC,v2add(cc,V2(-40,30)),(Weapon){0,0},left_relic,0);
@@ -312,7 +319,7 @@ void player_take_damage(v2 from){
 }
 
 // ----------------------------------------------------------- weapons
-static bool melee_blocked_by_wall(v2 from, v2 to){
+static bool path_blocked_by_wall(v2 from, v2 to){
     v2 d=v2sub(to,from);
     int steps=(int)ceilf(fmaxf(fabsf(d.x),fabsf(d.y))/4.0f);
     for (int i=1;i<steps;i++){
@@ -384,7 +391,7 @@ static void fire_weapon(float dt){
             if (dist<reach+e->radius){
                 v2 nd=v2norm(d);
                 if ((whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f) &&
-                    !melee_blocked_by_wall(p->pos,e->pos))
+                    !path_blocked_by_wall(p->pos,e->pos))
                     enemy_damage(e,dmg,p->pos,burn,slow,crit,true,p->attack_group);
             }
         }
@@ -1192,6 +1199,7 @@ static void update_bullets(float dt){
                 if (d<12.0f){ b->active=false; continue; }
             }
         }
+        v2 previous_pos=b->pos;
         b->pos = v2add(b->pos,v2scale(b->vel,dt));
         if (b->kind==3 && b->from_player && player_has_wrelic(WR_GLAIVE_TRAIL)){
             b->trail_t-=dt;
@@ -1206,7 +1214,8 @@ static void update_bullets(float dt){
             }
         }
         // 벽
-        if (b->kind!=3 && tile_solid((int)(b->pos.x/TILE),(int)(b->pos.y/TILE))){
+        bool wave_hit_wall=b->kind==8 && path_blocked_by_wall(previous_pos,b->pos);
+        if (b->kind!=3 && (wave_hit_wall || tile_solid((int)(b->pos.x/TILE),(int)(b->pos.y/TILE)))){
             if (b->kind==2 && b->from_player && b->bounces>0){ // 도탄: 막힌 축만 반사
                 b->pos = v2sub(b->pos,v2scale(b->vel,dt)); // 충돌 직전으로 복귀
                 bool solx=tile_solid((int)((b->pos.x+b->vel.x*dt)/TILE),(int)(b->pos.y/TILE));
