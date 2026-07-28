@@ -2612,6 +2612,15 @@ static void debug_fixture_modifiers(void){
     for (int y=1;y<G.room.h-1&&!fixture_pos_found;y++) for (int x=1;x<G.room.w-1;x++)
         if (!tile_solid(x,y)){ fixture_pos=V2(x*TILE+8.0f,y*TILE+8.0f); fixture_pos_found=true; break; }
     memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(88,88); G.pl.aim=V2(1,0); G.pl.attack_cd=0;
+    G.pl.wrelics[0]=-1; G.pl.wrelics[1]=-1;
+    uint8_t saved_blade_wall=G.room.tiles[5][6];
+    G.room.tiles[5][6]=T_WALL;
+    G.ents[0]=(Entity){true,E_BAT,V2(120,88),V2(0,0),10.0f,10.0f,7.0f};
+    attack_held=true; fire_weapon(0); attack_held=false;
+    debug_invariant("sword-wall-blocks-melee",10000,(int)lroundf(G.ents[0].hp*1000.0f));
+    G.room.tiles[5][6]=saved_blade_wall;
+    memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(80,80); G.pl.hp=3.0f; G.pl.maxhp=5;
     G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=-1;
     G.ents[0]=(Entity){true,E_BAT,V2(104,80),V2(0,0),1.0f,4.0f,7.0f};

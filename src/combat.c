@@ -312,6 +312,16 @@ void player_take_damage(v2 from){
 }
 
 // ----------------------------------------------------------- weapons
+static bool melee_blocked_by_wall(v2 from, v2 to){
+    v2 d=v2sub(to,from);
+    int steps=(int)ceilf(fmaxf(fabsf(d.x),fabsf(d.y))/4.0f);
+    for (int i=1;i<steps;i++){
+        v2 p=v2add(from,v2scale(d,(float)i/(float)steps));
+        if (tile_solid((int)(p.x/TILE),(int)(p.y/TILE))) return true;
+    }
+    return false;
+}
+
 static void fire_weapon(float dt){
     Player* p=&G.pl;
     const WeaponDef* wd=&weapon_defs[p->weapon.type];
@@ -373,7 +383,8 @@ static void fire_weapon(float dt){
             if (e->spawn_t>0) e->spawn_t=0; // 맞으면 즉시 등장 완료 취급
             if (dist<reach+e->radius){
                 v2 nd=v2norm(d);
-                if (whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f)
+                if ((whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f) &&
+                    !melee_blocked_by_wall(p->pos,e->pos))
                     enemy_damage(e,dmg,p->pos,burn,slow,crit,true,p->attack_group);
             }
         }
