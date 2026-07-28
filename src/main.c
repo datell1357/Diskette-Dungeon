@@ -337,7 +337,7 @@ static int debug_action(const char* s){
         "fixture-ddd-forfeit","fixture-ddd-promise-labels",
         "fixture-ddd-shake-menu","fixture-ddd-shake-roundtrip",
         "fixture-ddd-ui-showcase","fixture-ddd-opening","fixture-ddd-ending","fixture-ddd-options",
-        "fixture-ddd-start-intro","fixture-story-signals"
+        "fixture-ddd-start-intro","fixture-story-signals","fixture-ddd-training"
     };
     int i;
     for (i=0;i<(int)(sizeof(names)/sizeof(names[0]));i++)

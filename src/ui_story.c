@@ -282,10 +282,11 @@ void draw_play(void){
                 draw_text_center(label,label_pos.x,label_pos.y,0.42f,COL(0xE8E0F8),0.9f);
         }
     }
-    for (int i=0;i<MAX_PICKUPS;i++)
-        if (G.pickups[i].active && (G.pickups[i].type==PK_WEAPON ||
-            G.pickups[i].type==PK_RELIC || G.pickups[i].type==PK_WRELIC))
-            draw_reward_effect_label(&G.pickups[i]);
+    if (!G.training_active)
+        for (int i=0;i<MAX_PICKUPS;i++)
+            if (G.pickups[i].active && (G.pickups[i].type==PK_WEAPON ||
+                G.pickups[i].type==PK_RELIC || G.pickups[i].type==PK_WRELIC))
+                draw_reward_effect_label(&G.pickups[i]);
     // 픽업
     // 기억 이벤트 — 방 클리어 뒤 배드 섹터에 남은 조각
     if (r->event_state==MEM_STATE_AVAILABLE){
@@ -301,7 +302,15 @@ void draw_play(void){
         float bob=sinf(pk->bob)*2.0f;
         float s = pk->type==PK_CORE?14.0f:(pk->type==PK_BYTE?8.0f:12.0f);
         col3 ptint = pk->type==PK_WRELIC? COL(0xFFD060):COL(0xFFFFFF); // 무기 유물은 금빛
-        if (pk->type==PK_WRELIC){ s=13.0f; draw_quad(pk->pos.x-9,pk->pos.y+bob-9,18,18,COL(0xFFD060),0.12f+0.08f*sinf(G.time*5.0f)); }
+        if (pk->type==PK_WRELIC){
+            static const col3 station_colors[WPN_COUNT]={
+                {0.25f,0.95f,0.82f}, {1.00f,0.68f,0.30f}, {0.98f,0.42f,0.72f},
+                {0.55f,0.94f,0.45f}, {1.00f,0.42f,0.38f}, {0.68f,0.48f,1.00f}
+            };
+            if (G.training_active) ptint=station_colors[weapon_relic_defs[pk->relic].weapon];
+            s=13.0f;
+            draw_quad(pk->pos.x-9,pk->pos.y+bob-9,18,18,ptint,0.12f+0.08f*sinf(G.time*5.0f));
+        }
         draw_sprite(pickup_sprite(pk),pk->pos.x,pk->pos.y+bob,s,s,ptint,1,false,0);
     }
     // 적
@@ -719,9 +728,59 @@ static void draw_shield_heart(float x,float capacity,float amount){
     #undef SHIELD_HALF
     #undef SHIELD_HEART
 }
+static void draw_training_hud(void){
+    static const float station_x[WPN_COUNT]={40,120,200,280,360,440};
+    static const float module_dx[4]={-20,20,-20,20};
+    static const float module_y[4]={194,194,230,230};
+    Player* p=&G.pl;
+
+    draw_quad(0,0,VIRT_W,28,COL(0x0B0710),0.78f);
+    draw_text("훈련장",8,7,0.82f,COL(0x9FFFF0),1);
+    draw_text_center("E : 장착 · Tab : 가방 · Esc : 나가기",VIRT_W*0.5f,8,0.54f,COL(0xC8C0E0),0.95f);
+    Pickup* nearby=NULL;
+    float best=28.0f;
+    for (int i=0;i<MAX_PICKUPS;i++){
+        Pickup* pk=&G.pickups[i];
+        if (!pk->active || (pk->type!=PK_WEAPON && pk->type!=PK_WRELIC)) continue;
+        float d=v2len(v2sub(pk->pos,p->pos));
+        if (d<best){ best=d; nearby=pk; }
+    }
+    if (nearby){
+        const char* name=nearby->type==PK_WEAPON?weapon_defs[nearby->weapon.type].name:weapon_relic_defs[nearby->relic].name;
+        col3 c=nearby->type==PK_WEAPON?weapon_relic_color(nearby->weapon.type):weapon_relic_color(weapon_relic_defs[nearby->relic].weapon);
+        draw_quad(144,31,192,25,COL(0x0B0710),0.88f);
+        draw_text_center(name,VIRT_W*0.5f,35,0.54f,c,1);
+        draw_text_center("E : 장착",VIRT_W*0.5f,47,0.38f,COL(0xE8E0F8),0.96f);
+    } else {
+        draw_text_center("무한 더미",VIRT_W*0.5f,57,0.56f,COL(0xFFB0CC),0.95f);
+    }
+
+    for (int w=0;w<WPN_COUNT;w++){
+        col3 c=weapon_relic_color(w);
+        draw_text_center(weapon_defs[w].name,station_x[w],172,0.38f,c,0.95f);
+        for (int m=0;m<4;m++){
+            char slot[4];
+            snprintf(slot,sizeof(slot),"%d",m+1);
+            draw_text_center(slot,station_x[w]+module_dx[m],module_y[m]+7,0.34f,c,0.95f);
+        }
+    }
+    for (int i=0;i<MAX_FLOATERS;i++){
+        Floater* f=&G.floaters[i];
+        if (f->t<=0) continue;
+        float fx=f->screen_fixed?f->x:f->x-G.cam.x;
+        float fy=f->screen_fixed?f->y:f->y-G.cam.y-30.0f-(1.4f-f->t)*16.0f;
+        draw_text(f->text,fx-text_width(f->text,0.8f)*0.5f,fy,0.8f,f->c,clampf(f->t,0,1));
+    }
+    if (G.msg_t>0)
+        draw_text_center(G.msg,VIRT_W*0.5f,VIRT_H-13,0.52f,COL(0xE8E0F8),clampf(G.msg_t,0,1));
+}
 void hud_draw(void){
     Player* p=&G.pl;
     char buf[160];
+    if (G.training_active){
+        draw_training_hud();
+        return;
+    }
     // 튜토리얼 힌트 (UI 패스 — 라이팅 영향 없음)
     if (G.room.biome==0&&G.room.idx==0){
         float ha=0.55f+0.2f*sinf(G.time*2.0f);
@@ -1214,11 +1273,11 @@ static void draw_title(void){
 
     char buf[128];
     float y=120;
-    const char* items[6];
+    const char* items[7];
     items[0]="모험 시작";
     items[1]="무기 변경"; items[2]="캐릭터 강화"; items[3]="설정";
-    items[4]="도감"; items[5]="종료";
-    for (int i=0;i<6;i++){
+    items[4]="도감"; items[5]="훈련장"; items[6]="종료";
+    for (int i=0;i<7;i++){
         bool sel = G.menu_sel==i;
         col3 c = sel?COL(0xFFFFFF):COL(0x8878A8);
         if (sel) draw_text(">",VIRT_W/2-text_width(items[i],0.9f)/2-16,y,0.9f,COL(0x3FE0C5),1);
@@ -3784,6 +3843,38 @@ static int debug_enemy_bullets(void){
     for(int i=0;i<MAX_BULLETS;i++) if(G.bullets[i].active&&!G.bullets[i].from_player)n++;
     return n;
 }
+static void debug_fixture_training(void){
+    MetaSave meta_before=G.meta;
+    start_training();
+    debug_invariant("training-state",1,G.training_active?1:0);
+    debug_invariant("training-room-width",30,G.room.w);
+    debug_invariant("training-room-height",17,G.room.h);
+    debug_invariant("training-dummy-active",1,G.ents[0].active?1:0);
+    debug_invariant("training-dummy-hp",1000000000,(int)G.ents[0].hp);
+    debug_invariant("training-stations",30,debug_pickup_count());
+    v2 dummy_pos=G.ents[0].pos;
+    update_play(0.25f);
+    debug_invariant("training-dummy-static-x",(int)lroundf(dummy_pos.x*1000.0f),(int)lroundf(G.ents[0].pos.x*1000.0f));
+    debug_invariant("training-dummy-static-y",(int)lroundf(dummy_pos.y*1000.0f),(int)lroundf(G.ents[0].pos.y*1000.0f));
+    debug_invariant("training-dummy-no-bullets",0,debug_enemy_bullets());
+
+    Pickup* cannon=&G.pickups[5];
+    int cannon_station_weapon=cannon->weapon.type;
+    player_try_pickup(cannon);
+    debug_invariant("training-weapon-equipped",WPN_CANNON,G.pl.weapon.type);
+    debug_invariant("training-weapon-station-fixed",cannon_station_weapon,cannon->weapon.type);
+    player_try_pickup(&G.pickups[1]);
+    player_try_pickup(&G.pickups[2]);
+    debug_invariant("training-module-first",WR_SWORD_WAVE,G.pl.wrelics[0]);
+    debug_invariant("training-module-second",WR_SWORD_WHIRL,G.pl.wrelics[1]);
+    player_try_pickup(&G.pickups[3]);
+    debug_invariant("training-module-swap-state",ST_RELIC_SWAP,G.state);
+    player_confirm_relic_swap(0);
+    debug_invariant("training-module-swap-return",ST_TRAINING,G.state);
+    debug_invariant("training-module-station-fixed",1,G.pickups[3].active?1:0);
+    debug_invariant("training-meta-unchanged",0,memcmp(&meta_before,&G.meta,sizeof(MetaSave))==0?0:1);
+    printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"training\",\"status\":\"pass\",\"stations\":30,\"dummy\":\"infinite-passive\",\"weapon_station\":\"fixed\",\"module_station\":\"fixed\"}\n");
+}
 void debug_apply_config_after_game_init(void){
     bool finite = DBG_CFG.have_action;
     if (DBG_CFG.clean_profile) debug_prepare_configured_run();
@@ -3967,6 +4058,7 @@ void debug_apply_config_after_game_init(void){
         if (!DBG_CFG.have_hold_ms) exit(0);
         break;
     case 26: debug_fixture_story_signals(); fflush(stdout); exit(0);
+    case 27: debug_fixture_training(); fflush(stdout); exit(0);
     default: break;
     }
     fflush(stdout); sapp_request_quit();
@@ -4083,6 +4175,9 @@ void game_frame(void){
     case ST_PLAY:
         if (G.fade_dir==0||G.fade_next_state==-2) update_play(dt);
         break;
+    case ST_TRAINING:
+        update_play(dt);
+        break;
     case ST_FLASHBACK:
         G.fb_t += rdt;
         break;
@@ -4097,7 +4192,7 @@ void game_frame(void){
 
     // 그리기
     render_begin_frame();
-    if (G.state==ST_PLAY||G.state==ST_PAUSE||G.state==ST_INVENTORY||G.state==ST_RELIC_SWAP){
+    if (G.state==ST_PLAY||G.state==ST_TRAINING||G.state==ST_PAUSE||G.state==ST_INVENTORY||G.state==ST_RELIC_SWAP){
         draw_play();
         draw_ui_begin();
         hud_draw();
@@ -4175,7 +4270,13 @@ static void title_activate(void){
     case 2: G.state=ST_UPGRADE; G.upg_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
     case 3: G.options_return_state=ST_TITLE; G.state=ST_OPTIONS; G.menu_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
     case 4: G.state=ST_CODEX; G.codex_section=0; G.codex_page=0; G.codex_detail=0; G.codex_focus=0; sfx_play(SFX_UI); break;
-    case 5: meta_save(); sapp_request_quit(); break;
+    case 5:
+        start_training();
+        G.state=ST_TRAINING; G.state_t=0;
+        G.fade=1; G.fade_dir=-1;
+        sfx_play(SFX_UI);
+        break;
+    case 6: meta_save(); sapp_request_quit(); break;
     }
 }
 
@@ -4204,8 +4305,8 @@ void game_event(const sapp_event* e){
         break;
     case ST_TITLE:
         if (!kd) break;
-        if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.menu_sel=(G.menu_sel+5)%6; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.menu_sel=(G.menu_sel+1)%6; sfx_play(SFX_UI); }
+        if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){ G.menu_sel=(G.menu_sel+6)%7; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_DOWN||e->key_code==SAPP_KEYCODE_S){ G.menu_sel=(G.menu_sel+1)%7; sfx_play(SFX_UI); }
         else if (e->key_code==SAPP_KEYCODE_ENTER||e->key_code==SAPP_KEYCODE_SPACE) title_activate();
         break;
     case ST_OPTIONS:
@@ -4316,6 +4417,9 @@ void game_event(const sapp_event* e){
             }
             break;
         }
+        // 일반 런과 훈련장은 이동·공격·장착 입력을 공유한다.
+        /* fall through */
+    case ST_TRAINING:
         if (!kd) break;
         if (e->key_code==SAPP_KEYCODE_LEFT_SHIFT||e->key_code==SAPP_KEYCODE_RIGHT_SHIFT){
             Player* p=&G.pl;
@@ -4336,7 +4440,7 @@ void game_event(const sapp_event* e){
                 burst(p->pos,6,COL(0x3FE0C5),80,0.3f,2,true);
             }
         }
-        else if (e->key_code==SAPP_KEYCODE_Q) player_drop_shard();
+        else if (e->key_code==SAPP_KEYCODE_Q && !G.training_active) player_drop_shard();
         else if (e->key_code==SAPP_KEYCODE_E){
             // 가까운 픽업 줍기
             float best=22.0f; Pickup* bp=NULL;
@@ -4349,12 +4453,21 @@ void game_event(const sapp_event* e){
             if (bp) player_try_pickup(bp);
         }
         else if (e->key_code==SAPP_KEYCODE_TAB){ G.state=ST_INVENTORY; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_PAUSE; G.menu_sel=0; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_ESCAPE){
+            if (G.training_active){
+                G.training_active=false;
+                G.state=ST_TITLE; G.state_t=0;
+                music_set(0);
+            } else {
+                G.state=ST_PAUSE; G.menu_sel=0;
+            }
+            sfx_play(SFX_UI);
+        }
         break;
     case ST_INVENTORY:
         if (!kd) break;
-        if (e->key_code==SAPP_KEYCODE_TAB||e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=ST_PLAY; sfx_play(SFX_UI); }
-        else if (e->key_code==SAPP_KEYCODE_Q) player_drop_shard();
+        if (e->key_code==SAPP_KEYCODE_TAB||e->key_code==SAPP_KEYCODE_ESCAPE){ G.state=G.training_active?ST_TRAINING:ST_PLAY; sfx_play(SFX_UI); }
+        else if (e->key_code==SAPP_KEYCODE_Q && !G.training_active) player_drop_shard();
         break;
     case ST_RELIC_SWAP: {
         if (!kd) break;

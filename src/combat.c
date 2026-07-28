@@ -196,6 +196,7 @@ void dd_debug_clear_room_enemies(void){
 #endif
 static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool crit,bool from_player,uint32_t attack_group){
     if(e->type==E_ECHO_GHOST)return;
+    bool training_dummy=G.training_active && e==&G.ents[0];
     bool is_boss=e->type>=E_BOSS_ROT&&e->type<=E_BOSS_NULL;
     bool execute=from_player && !is_boss && !execution_burst &&
         G.pl.weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_EXECUTE) &&
@@ -225,6 +226,21 @@ static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool 
         e->player_damage=dmg;
         e->player_damage_t=0.9f;
         e->player_damage_crit=crit;
+    }
+    if (training_dummy){
+        e->hp=e->maxhp;
+        for (int i=0;i<MAX_ENTITIES;i++) if (e==&G.ents[i]){
+            G.enemy_feedback[i].hp=1.0f;
+            break;
+        }
+        if (!from_player || G.pl.impact_group!=attack_group){
+            G.pl.impact_group=attack_group;
+            G.hitstop=fmaxf(G.hitstop,crit?0.07f:0.035f);
+            G.shake=fmaxf(G.shake,crit?2.5f:1.2f);
+            burst(e->pos,crit?10:5,COL(0xFF3D7F),110,0.4f,2.2f,true);
+        }
+        sfx_play(SFX_HIT);
+        return;
     }
     if (burn > e->burn) e->burn = burn;
     if (slow > e->slow) e->slow = slow;
@@ -1329,23 +1345,25 @@ static void begin_relic_swap(Pickup* pk){
 }
 
 void player_confirm_relic_swap(int slot){
-    if (G.relic_swap_pickup<0||G.relic_swap_pickup>=MAX_PICKUPS){ G.state=ST_PLAY; return; }
+    int return_state=G.training_active?ST_TRAINING:ST_PLAY;
+    if (G.relic_swap_pickup<0||G.relic_swap_pickup>=MAX_PICKUPS){ G.state=return_state; return; }
     Pickup* pk=&G.pickups[G.relic_swap_pickup];
-    if (!pk->active||pk->type!=G.relic_swap_type||pk->relic!=G.relic_swap_id){ G.state=ST_PLAY; return; }
+    if (!pk->active||pk->type!=G.relic_swap_type||pk->relic!=G.relic_swap_id){ G.state=return_state; return; }
     if (slot<0){
-        pk->active=false;
+        if (!G.training_active) pk->active=false;
         set_msg("현재 유물을 유지했다");
-        G.state=ST_PLAY;
+        G.state=return_state;
         sfx_play(SFX_UI);
         return;
     }
     int count=G.relic_swap_type==PK_WRELIC?2:4;
-    if (slot>=count){ G.state=ST_PLAY; return; }
+    if (slot>=count){ G.state=return_state; return; }
     if (G.relic_swap_type==PK_WRELIC){
         int old_slot=G.relic_swap_slots[slot];
         G.pl.wrelics[old_slot]=pk->relic;
-        for (int i=0;i<MAX_PICKUPS;i++)
-            if (G.pickups[i].active&&G.pickups[i].type==PK_WRELIC) G.pickups[i].active=false;
+        if (!G.training_active)
+            for (int i=0;i<MAX_PICKUPS;i++)
+                if (G.pickups[i].active&&G.pickups[i].type==PK_WRELIC) G.pickups[i].active=false;
     } else {
         set_regular_relic(G.relic_swap_slots[slot],false);
         set_regular_relic(pk->relic,true);
@@ -1355,7 +1373,7 @@ void player_confirm_relic_swap(int slot){
     const char* name=G.relic_swap_type==PK_WRELIC?weapon_relic_defs[pk->relic].name:relic_defs[pk->relic].name;
     snprintf(buf,sizeof(buf),"%s 교체 완료",name);
     set_msg(buf);
-    G.state=ST_PLAY;
+    G.state=return_state;
     sfx_play(SFX_PICKUP);
 }
 
@@ -1419,7 +1437,7 @@ bool player_try_pickup(Pickup* pk){
         snprintf(buf,sizeof(buf),"%s%s 장착",prefix_names[p->weapon.prefix],weapon_defs[p->weapon.type].name);
         set_msg(buf);
         stat_floats(before);
-        pk->weapon=old; // 들고 있던 무기를 내려놓음
+        if (!G.training_active) pk->weapon=old; // 들고 있던 무기를 내려놓음
         return true;
     }
     case PK_RELIC: {
@@ -1444,13 +1462,15 @@ bool player_try_pickup(Pickup* pk){
         p->wrelics[slot]=wr;
         sfx_play(SFX_PICKUP);
         char buf[96];
-        snprintf(buf,sizeof(buf),"%s — %s",weapon_relic_defs[wr].name,weapon_relic_defs[wr].desc);
+        if (G.training_active) snprintf(buf,sizeof(buf),"%s 장착",weapon_relic_defs[wr].name);
+        else snprintf(buf,sizeof(buf),"%s — %s",weapon_relic_defs[wr].name,weapon_relic_defs[wr].desc);
         set_msg(buf);
         stat_floats(before);
-        pk->active=false;
+        if (!G.training_active) pk->active=false;
         // 형제 드롭 제거 — 보스가 떨군 둘 중 하나만 획득
-        for (int i=0;i<MAX_PICKUPS;i++)
-            if (G.pickups[i].active && G.pickups[i].type==PK_WRELIC) G.pickups[i].active=false;
+        if (!G.training_active)
+            for (int i=0;i<MAX_PICKUPS;i++)
+                if (G.pickups[i].active && G.pickups[i].type==PK_WRELIC) G.pickups[i].active=false;
         return true;
     }
     }
@@ -1507,7 +1527,7 @@ static void update_enemy_feedback(float dt){
 void update_play(float dt){
     Player* p=&G.pl;
     update_enemy_feedback(dt);
-    clear_reward_label_obstacles();
+    if (!G.training_active) clear_reward_label_obstacles();
     player_sync_light_shield();
     G.run_time += dt;
     G.room_t += dt;
@@ -1599,6 +1619,11 @@ void update_play(float dt){
     for (int i=0;i<MAX_ENTITIES;i++){
         Entity* e=&G.ents[i];
         if (!e->active) continue;
+        if (G.training_active && i==0){
+            if (e->flash>0) e->flash-=dt;
+            e->vel=V2(0,0);
+            continue;
+        }
         // 벽 속에 갇힌 적은 가까운 바닥으로 구출 (방 클리어 불가 방지)
         if (!(e->type>=E_BOSS_ROT&&e->type<=E_BOSS_NULL) &&
             tile_solid((int)(e->pos.x/TILE),(int)(e->pos.y/TILE))){

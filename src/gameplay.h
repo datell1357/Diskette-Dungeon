@@ -174,7 +174,7 @@ typedef struct {
 
 enum { ST_BOOT=0, ST_INTRO, ST_TITLE, ST_OPTIONS, ST_PLAY, ST_FLASHBACK, ST_INVENTORY,
        ST_RELIC_SWAP, ST_PAUSE, ST_DEAD, ST_ENDING, ST_EPILOGUE, ST_UPGRADE, ST_CODEX, ST_CODEX_DETAIL,
-       ST_WEAPON_SELECT, ST_DIFFICULTY_SELECT };
+       ST_WEAPON_SELECT, ST_DIFFICULTY_SELECT, ST_TRAINING };
 
 typedef struct {
     uint32_t magic, version;
@@ -245,6 +245,7 @@ typedef struct {
     int relic_swap_type, relic_swap_id, relic_swap_pickup, relic_swap_sel;
     int relic_swap_slots[4];
     bool run_settled;
+    bool training_active;
     AoeZone zones[MAX_ZONES];  // 범위지정 공격 예고
 } Game;
 
@@ -269,6 +270,7 @@ int portal_list(v2* out, int* exit_flag, int max);
 void start_run(void);
 void start_run_with_seed(uint32_t seed);
 void start_run_after_intro(void);
+void start_training(void);
 enum { SETTLE_DEATH=0, SETTLE_FORFEIT };
 bool settle_run_once(int reason);
 #ifdef DD_DEBUG

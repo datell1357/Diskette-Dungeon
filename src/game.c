@@ -974,6 +974,7 @@ void on_room_cleared(void){
 }
 
 static void start_run_with_seed_internal(uint32_t seed,bool save_meta){
+    G.training_active=false;
     memset(&G.memory,0,sizeof(G.memory));
     memset(&G.pl,0,sizeof(G.pl));
     G.pl.wrelics[0]=G.pl.wrelics[1]=-1;
@@ -1018,6 +1019,60 @@ void start_run_after_intro(void){
     meta_save();
 }
 void start_run(void){ start_run_with_seed(G.title_seed); }
+
+void start_training(void){
+    static const float station_x[WPN_COUNT]={40,120,200,280,360,440};
+    static const float module_dx[4]={-20,20,-20,20};
+    static const float module_y[4]={194,194,230,230};
+    Room* r=&G.room;
+    Player* p=&G.pl;
+
+    G.training_active=true;
+    memset(&G.memory,0,sizeof(G.memory));
+    memset(p,0,sizeof(*p));
+    memset(G.ents,0,sizeof(G.ents));
+    memset(G.bullets,0,sizeof(G.bullets));
+    memset(G.parts,0,sizeof(G.parts));
+    memset(G.pickups,0,sizeof(G.pickups));
+    memset(G.floaters,0,sizeof(G.floaters));
+    memset(G.enemy_feedback,0,sizeof(G.enemy_feedback));
+    memset(G.zones,0,sizeof(G.zones));
+    memset(r,0,sizeof(*r));
+
+    p->wrelics[0]=p->wrelics[1]=-1;
+    p->maxhp=3+(int)G.meta.upg[0];
+    p->shield_maxhp=p->maxhp;
+    p->hp=(float)p->maxhp;
+    p->shield=fminf(player_light_shield_limit(),G.meta.upg[3]*0.5f);
+    p->light_shield_cap=player_light_shield_limit();
+    if (!((G.meta.unlocked_weapons>>G.title_weapon)&1)) G.title_weapon=WPN_SWORD;
+    p->weapon=(Weapon){G.title_weapon,PFX_NONE};
+    p->aim=V2(0,-1);
+    p->pos=V2(VIRT_W*0.5f,132.0f);
+
+    r->w=30; r->h=17; r->biome=0; r->idx=0; r->cleared=true;
+    for (int y=0;y<r->h;y++) for (int x=0;x<r->w;x++)
+        r->tiles[y][x]=(x==0||y==0||x==r->w-1||y==r->h-1)?T_WALL:T_FLOOR;
+
+    G.run_seed=((uint32_t)(stm_now()*1000.0)&0xFFFFFFFFu)|1u;
+    G.bytes_run=0; G.run_time=0; G.kills=0; G.room_t=0;
+    G.ambient_mul=1.0f; G.light_mul=1.0f;
+    G.timescale=1.0f; G.hitstop=0; G.shake=0; G.run_settled=true;
+    G.hist_head=0; G.cam=V2(0,0);
+    for (int i=0;i<256;i++) G.history[i]=p->pos;
+
+    spawn_enemy(E_GOLEM,V2(VIRT_W*0.5f,88.0f));
+    G.ents[0].hp=G.ents[0].maxhp=1000000000.0f;
+    G.ents[0].spawn_t=0;
+
+    for (int w=0;w<WPN_COUNT;w++){
+        spawn_pickup(PK_WEAPON,V2(station_x[w],160.0f),(Weapon){w,PFX_NONE},0,0);
+        for (int m=0;m<4;m++)
+            spawn_pickup(PK_WRELIC,V2(station_x[w]+module_dx[m],module_y[m]),(Weapon){0,0},w*4+m,0);
+    }
+    set_msg("훈련장 — E로 무기와 무기 유물을 장착할 수 있다");
+    music_set(1);
+}
 
 bool settle_run_once(int reason){
     if (G.run_settled) return false;
