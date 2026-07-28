@@ -102,7 +102,7 @@ typedef struct {
     float warn;    // 총 예고 시간 (진행도 시각화용)
 } AoeZone;
 
-typedef struct { float x,y; char text[48]; float t; col3 c; } Floater;
+typedef struct { float x,y; char text[48]; float t; col3 c; bool screen_fixed; } Floater;
 typedef struct {
     v2 pos;
     float t, hp, damage, radius;
@@ -281,6 +281,7 @@ void spawn_pickup(int type, v2 pos, Weapon w, int relic, int core_id);
 v2 reward_label_pos(const Pickup* pickup);
 void clear_reward_label_obstacles(void);
 void add_floater(v2 pos, const char* text, col3 c);
+void add_fixed_floater(float x, float y, const char* text, col3 c);
 void set_msg(const char* m);
 void open_doors(void);
 void on_room_cleared(void);

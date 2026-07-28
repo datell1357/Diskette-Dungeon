@@ -728,16 +728,18 @@ void hud_draw(void){
         draw_text("W,A,S,D : 이동",56,84,0.9f,COL(0x9FFFF0),ha);
         draw_text("마우스/Space : 공격",56,108,0.9f,COL(0x9FFFF0),ha);
         draw_text("Shift : 대시 · E : 줍기",56,132,0.9f,COL(0x9FFFF0),ha);
+        draw_text("Q : 추억 조각 버리기",56,156,0.9f,COL(0x9FFFF0),ha);
         draw_text("빛이 강해지면 느려지지만 강해진다.",250,100,0.62f,COL(0xB8FFF0),1.0f);
         draw_text("빛이 줄어들면 약해지지만 빨라진다.",250,120,0.62f,COL(0xB8FFF0),1.0f);
-        draw_text("Tab : 가방",56,156,0.9f,COL(0x9FFFF0),ha);
+        draw_text("Tab : 가방",56,180,0.9f,COL(0x9FFFF0),ha);
     }
-    // 플로터 (월드 좌표 → 화면 좌표, 카메라 보정)
+    // 플로터: 월드 피드백은 카메라 보정, 안내는 화면 좌표에 고정
     for (int i=0;i<MAX_FLOATERS;i++){
         Floater* f=&G.floaters[i];
         if (f->t<=0) continue;
-        float fx=f->x-G.cam.x, fy=f->y-G.cam.y;
-        draw_text(f->text,fx-text_width(f->text,0.8f)*0.5f,fy-30.0f-(1.4f-f->t)*16.0f,0.8f,f->c,clampf(f->t,0,1));
+        float fx=f->screen_fixed?f->x:f->x-G.cam.x;
+        float fy=f->screen_fixed?f->y:f->y-G.cam.y-30.0f-(1.4f-f->t)*16.0f;
+        draw_text(f->text,fx-text_width(f->text,0.8f)*0.5f,fy,0.8f,f->c,clampf(f->t,0,1));
     }
     // 화면 밖 포탈 화살표 (열린 문/출구) — 페이드 중엔 생략
     if (G.fade_dir==0){

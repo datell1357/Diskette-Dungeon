@@ -18,15 +18,16 @@ static bool phase_stepping;
 static bool execution_burst;
 
 // ----------------------------------------------------------- 무게 변화 → 스탯 피드백
-// 픽업/드롭으로 무게가 바뀌면 공격/이속/빛 변화를 플로터로 띄운다.
+// 픽업/드롭으로 무게가 바뀌면 화면 고정 안내로 공격/이속/빛 변화를 띄운다.
 typedef struct { float dmg, spd, light; } StatSnap;
 static StatSnap stat_capture(void){
     return (StatSnap){ 1.0f+weight_frac()*0.5f, player_speed_mul(), player_light_radius() };
 }
 static void stat_floats(StatSnap before){
     StatSnap after = stat_capture();
-    v2 base = G.pl.pos;
-    float row = -14.0f;
+    for (int i=0;i<MAX_FLOATERS;i++)
+        if (G.floaters[i].screen_fixed) G.floaters[i].t=0.0f;
+    float row = 44.0f;
     struct { const char* lbl; float b, a; } st[3] = {
         { "공격", before.dmg, after.dmg },
         { "이속", before.spd, after.spd },
@@ -38,8 +39,8 @@ static void stat_floats(StatSnap before){
         if (pct==0) continue;
         char buf[24];
         snprintf(buf,sizeof(buf),"%s %+d%%",st[i].lbl,pct);
-        add_floater(v2add(base,V2(0,row)), buf, pct>0?COL(0x9FFFF0):COL(0xFF3D7F));
-        row -= 10.0f;
+        add_fixed_floater(VIRT_W*0.5f,row,buf,pct>0?COL(0x9FFFF0):COL(0xFF3D7F));
+        row += 12.0f;
     }
 }
 
@@ -1363,8 +1364,8 @@ bool player_try_pickup(Pickup* pk){
             set_msg("추억 조각: 무게를 차지하지만 빛이 밝아진다 · Q로 버리기");
         sfx_play(SFX_SHARD);
         burst(pk->pos,12,COL(0x9FFFF0),90,0.6f,2,true);
-        add_floater(pk->pos,"추억 조각 +64KB",COL(0x9FFFF0));
         stat_floats(before);
+        add_fixed_floater(VIRT_W*0.5f,32.0f,"추억 조각 +64KB",COL(0x9FFFF0));
         pk->active=false;
         return true;
     }

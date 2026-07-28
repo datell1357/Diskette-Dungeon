@@ -189,7 +189,18 @@ void add_floater(v2 pos, const char* text, col3 c){
     for (int i=0;i<MAX_FLOATERS;i++){
         if (G.floaters[i].t<=0){
             Floater* f=&G.floaters[i];
-            f->x=pos.x; f->y=pos.y; f->t=1.4f; f->c=c;
+            f->x=pos.x; f->y=pos.y; f->t=1.4f; f->c=c; f->screen_fixed=false;
+            snprintf(f->text,sizeof(f->text),"%s",text);
+            return;
+        }
+    }
+}
+
+void add_fixed_floater(float x, float y, const char* text, col3 c){
+    for (int i=0;i<MAX_FLOATERS;i++){
+        if (G.floaters[i].t<=0){
+            Floater* f=&G.floaters[i];
+            f->x=x; f->y=y; f->t=1.4f; f->c=c; f->screen_fixed=true;
             snprintf(f->text,sizeof(f->text),"%s",text);
             return;
         }
