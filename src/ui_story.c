@@ -4409,11 +4409,11 @@ static void debug_fixture_dd_options(void){
     int scanline_before=G.meta.opt_scanline, shake_before=G.meta.opt_shake;
     int bgm_before=G.meta.opt_bgm, sfx_before=G.meta.opt_sfx;
     int saves, queue_after, queue_reloaded, state_entered, state_returned, pause_returned;
-    G.state=ST_TITLE; G.state_t=0; G.menu_sel=5;
+    G.state=ST_TITLE; G.state_t=0; G.menu_sel=6;
     debug_dispatch_key(SAPP_KEYCODE_S,false);
     debug_invariant("options-title-wrap-down",0,G.menu_sel);
     debug_dispatch_key(SAPP_KEYCODE_W,false);
-    debug_invariant("options-title-wrap-up",5,G.menu_sel);
+    debug_invariant("options-title-wrap-up",6,G.menu_sel);
     G.menu_sel=0;
     debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
     debug_invariant("difficulty-chooser-enter",ST_DIFFICULTY_SELECT,G.state);
@@ -4433,7 +4433,7 @@ static void debug_fixture_dd_options(void){
     debug_invariant("weapon-selector-down-row",weapon_before,G.title_weapon);
     debug_dispatch_key(SAPP_KEYCODE_ESCAPE,false);
     debug_invariant("weapon-selector-return",ST_TITLE,G.state);
-    G.menu_sel=3;
+    G.menu_sel=4;
     debug_dispatch_key(SAPP_KEYCODE_ENTER,false);
     state_entered=G.state;
     debug_invariant("options-enter-state",ST_OPTIONS,G.state);
@@ -5147,7 +5147,7 @@ void game_event(const sapp_event* e){
         if (!kd) break;
         if (e->key_code==SAPP_KEYCODE_ESCAPE){
             G.state=G.options_return_state?G.options_return_state:ST_TITLE;
-            G.menu_sel=G.state==ST_PAUSE?1:3;
+            G.menu_sel=G.state==ST_PAUSE?1:4;
             sfx_play(SFX_UI);
         } else if (e->key_code==SAPP_KEYCODE_UP||e->key_code==SAPP_KEYCODE_W){
             G.menu_sel=(G.menu_sel+8)%9; sfx_play(SFX_UI);
@@ -5164,7 +5164,7 @@ void game_event(const sapp_event* e){
             else if (G.menu_sel==5) G.title_seed=G.title_seed?0:(G.meta.last_seed?G.meta.last_seed:12345u);
             else if (G.menu_sel==6) G.meta.intro_replay_queued=!G.meta.intro_replay_queued;
             else if (G.menu_sel==7){ if(G.meta.true_clear) G.ngplus=!G.ngplus; else { sfx_play(SFX_DENY); break; } }
-            else { G.state=G.options_return_state?G.options_return_state:ST_TITLE; G.menu_sel=G.state==ST_PAUSE?1:3; sfx_play(SFX_UI); break; }
+            else { G.state=G.options_return_state?G.options_return_state:ST_TITLE; G.menu_sel=G.state==ST_PAUSE?1:4; sfx_play(SFX_UI); break; }
             meta_save(); sfx_play(SFX_UI);
         }
         break;
