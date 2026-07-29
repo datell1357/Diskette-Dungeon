@@ -2926,8 +2926,8 @@ static void debug_fixture_modifiers(void){
     fire_weapon(0);
     for (int i=0;i<5;i++) update_phase_attack(0.2f);
     debug_invariant("sword-phase-full-six-hits",6,G.enemy_feedback[0].hits);
-    debug_invariant("sword-phase-damage-110-percent",
-                    (int)lroundf(player_attack_damage()*1100.0f),
+    debug_invariant("sword-phase-damage-120-percent",
+                    (int)lroundf(player_attack_damage()*1200.0f),
                     (int)lroundf(phase_attack.damage*1000.0f));
     debug_invariant("sword-phase-step-invulnerability",1,G.pl.iframes>=0.2f?1:0);
     memset(G.ents,0,sizeof G.ents); memset(G.enemy_feedback,0,sizeof G.enemy_feedback);

@@ -592,7 +592,7 @@ static void fire_weapon(float dt){
                     .active=true,
                     .full=charge+0.00001f>=1.0f,
                     .hits_left=sword_phase_charge_hits(charge),
-                    .damage=dmg*1.1f,
+                    .damage=dmg*1.2f,
                     .burn=burn,
                     .slow=slow,
                     .crit=crit,
