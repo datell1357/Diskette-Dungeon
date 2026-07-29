@@ -3045,6 +3045,18 @@ static void debug_fixture_modifiers(void){
     memset(G.ents,0,sizeof G.ents);
     G.pl.wrelics[0]=WR_WAND_DELAY; G.pl.wrelics[1]=-1;
     G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.attack_cd=0;
+    G.pl.charge=0.2f; G.pl.charging=true; attack_held=false;
+    fire_weapon(0);
+    int rain_uncharged_count=0, rain_uncharged_forward=0, rain_uncharged_from_player=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
+        Bullet* rain=&G.bullets[i]; rain_uncharged_count++;
+        if (rain->vel.x>0) rain_uncharged_forward++;
+        if (v2len(v2sub(rain->pos,G.pl.pos))<0.01f) rain_uncharged_from_player++;
+    }
+    debug_invariant("wand-rain-below-first-tier-count",2,rain_uncharged_count);
+    debug_invariant("wand-rain-below-first-tier-fires-forward",2,rain_uncharged_forward);
+    debug_invariant("wand-rain-below-first-tier-uses-player-origin",2,rain_uncharged_from_player);
+    memset(G.bullets,0,sizeof G.bullets); G.pl.attack_cd=0;
     attack_held=true; G.pl.charge=0; G.pl.charging=false;
     fire_weapon(0.6f);
     attack_held=false;
@@ -3059,7 +3071,7 @@ static void debug_fixture_modifiers(void){
     debug_invariant("wand-rain-tier-30-count",4,rain_count);
     debug_invariant("wand-rain-tier-30-splits-left",2,rain_left);
     debug_invariant("wand-rain-tier-30-splits-right",2,rain_right);
-    debug_invariant("wand-rain-does-not-fire-forward",0,rain_forward);
+    debug_invariant("wand-rain-tier-30-fans-directions",4,rain_forward);
     static const float rain_charge[3]={0.5f,0.7f,1.0f};
     static const int rain_expected[3]={6,8,10};
     static const char* rain_name[3]={"wand-rain-tier-50-count","wand-rain-tier-70-count","wand-rain-tier-100-count"};
@@ -3072,10 +3084,14 @@ static void debug_fixture_modifiers(void){
         debug_invariant(rain_name[tier],rain_expected[tier],rain_count);
     }
     float rain_base=player_attack_damage();
+    float rain_near_side=999.0f, rain_far_side=0.0f;
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
+        float side_distance=fabsf(G.bullets[i].pos.y-G.pl.pos.y);
+        rain_near_side=fminf(rain_near_side,side_distance);
+        rain_far_side=fmaxf(rain_far_side,side_distance);
         debug_invariant("wand-rain-full-charge-damage-plus-10",(int)lroundf(rain_base*1.1f*1000.0f),(int)lroundf(G.bullets[i].dmg*1000.0f));
-        break;
     }
+    debug_invariant("wand-rain-full-charge-spreads-side-origin",1,rain_far_side-rain_near_side>=16.0f?1:0);
     memset(G.bullets,0,sizeof G.bullets);
     G.pl.attack_cd=0; G.pl.charge=0; G.pl.charging=false; attack_held=true;
     fire_weapon(2.5f);

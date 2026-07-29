@@ -467,16 +467,26 @@ static void fire_weapon(float dt){
                 p->attack_group++;
                 int tiers=(p->charge>=0.3f)+(p->charge>=0.5f)+(p->charge>=0.7f)+(p->charge>=1.0f);
                 int count=(player_has_wrelic(WR_WAND_FORK)?4:2)+tiers*2;
-                int half=count/2;
                 float shot_dmg=dmg*(p->charge>=1.0f?1.1f:1.0f);
-                v2 side=V2(-p->aim.y,p->aim.x);
-                for (int group=0;group<2;group++){
-                    float sign=group==0?-1.0f:1.0f;
-                    for (int i=0;i<half;i++){
-                        float stagger=((float)i-(float)(half-1)*0.5f)*12.0f;
-                        v2 pos=v2add(v2add(p->pos,v2scale(side,sign*14.0f)),v2scale(p->aim,stagger));
-                        Bullet* b=spawn_bullet(true,5,pos,v2scale(side,sign*wd->speed),shot_dmg,1.6f,3.5f,0);
+                if (tiers==0){
+                    float base=atan2f(p->aim.y,p->aim.x);
+                    for (int i=0;i<count;i++){
+                        float a=base+(i-(count-1)*0.5f)*0.25f;
+                        Bullet* b=spawn_bullet(true,5,p->pos,V2(cosf(a)*wd->speed,sinf(a)*wd->speed),shot_dmg,1.6f,3.5f,0);
                         if (b){ b->burn=burn;b->slow=slow;b->crit=crit; }
+                    }
+                } else {
+                    int half=count/2;
+                    v2 side=V2(-p->aim.y,p->aim.x);
+                    for (int group=0;group<2;group++){
+                        float sign=group==0?-1.0f:1.0f;
+                        for (int i=0;i<half;i++){
+                            float lane=(float)i-(float)(half-1)*0.5f;
+                            v2 pos=v2add(v2add(p->pos,v2scale(side,sign*(18.0f+fabsf(lane)*10.0f))),v2scale(p->aim,lane*12.0f));
+                            v2 dir=v2norm(v2add(v2scale(side,sign),v2scale(p->aim,lane*0.35f)));
+                            Bullet* b=spawn_bullet(true,5,pos,v2scale(dir,wd->speed),shot_dmg,1.6f,3.5f,0);
+                            if (b){ b->burn=burn;b->slow=slow;b->crit=crit; }
+                        }
                     }
                 }
                 p->attack_cd=wd->cooldown*cd_mul*kinship_cd_mul;
