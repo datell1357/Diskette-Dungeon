@@ -467,8 +467,11 @@ static void fire_weapon(float dt){
         bool launched=false;
         for (int direction=0;direction<directions;direction++){
             v2 aim=direction==0?p->aim:v2scale(p->aim,-1.0f);
+            v2 side=V2(-aim.y,aim.x);
             for (int n=0;n<per_direction;n++){
-                Bullet* b=spawn_bullet(true,3,p->pos,v2scale(aim,wd->speed),dmg,3.0f,7.0f,999);
+                float offset=per_direction==2?(n==0?-5.0f:5.0f):0.0f;
+                v2 spawn_pos=v2add(p->pos,v2scale(side,offset));
+                Bullet* b=spawn_bullet(true,3,spawn_pos,v2scale(aim,wd->speed),dmg,3.0f,7.0f,999);
                 if (!b) continue;
                 b->burn=burn; b->slow=slow; b->crit=crit;
                 launched=true;

@@ -313,7 +313,7 @@ void draw_play(void){
         }
         draw_sprite(pickup_sprite(pk),pk->pos.x,pk->pos.y+bob,s,s,ptint,1,false,0);
     }
-    // 절단 궤적: 적과 플레이어 아래에 남는 2초 화상지대
+    // 화염 궤적: 적과 플레이어 아래에 남는 2초 화상지대
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active || b->kind!=11) continue;
@@ -2797,9 +2797,15 @@ static void debug_fixture_modifiers(void){
     G.pl.wrelics[0]=WR_GLAIVE_ORBIT; G.pl.wrelics[1]=-1;
     attack_held=true; fire_weapon(0); attack_held=false;
     int orbit_forward=0;
+    float orbit_min_y=1e9f, orbit_max_y=-1e9f;
     for (int i=0;i<MAX_BULLETS;i++)
-        if (G.bullets[i].active&&G.bullets[i].kind==3&&G.bullets[i].vel.x>0) orbit_forward++;
+        if (G.bullets[i].active&&G.bullets[i].kind==3&&G.bullets[i].vel.x>0){
+            orbit_forward++;
+            orbit_min_y=fminf(orbit_min_y,G.bullets[i].pos.y);
+            orbit_max_y=fmaxf(orbit_max_y,G.bullets[i].pos.y);
+        }
     debug_invariant("glaive-orbit-double-throw",2,orbit_forward);
+    debug_invariant("glaive-orbit-throws-are-separated",10000,(int)lroundf((orbit_max_y-orbit_min_y)*1000.0f));
     memset(G.bullets,0,sizeof G.bullets);
     G.pl.attack_cd=0; G.pl.glaive_out=false; G.pl.wrelics[1]=WR_GLAIVE_TWIN;
     attack_held=true; fire_weapon(0); attack_held=false;
