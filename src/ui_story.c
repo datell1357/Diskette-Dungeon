@@ -2806,7 +2806,19 @@ static void debug_fixture_modifiers(void){
         }
     debug_invariant("glaive-orbit-double-throw",2,orbit_forward);
     debug_invariant("glaive-orbit-throws-are-separated",10000,(int)lroundf((orbit_max_y-orbit_min_y)*1000.0f));
+    G.ents[0]=(Entity){true,E_BAT,v2add(G.pl.pos,V2(24,0)),V2(0,0),1000.0f,1000.0f,7.0f};
+    float orbit_hit_damage=0.0f;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==3){
+        G.bullets[i].pos=G.ents[0].pos;
+        G.bullets[i].vel=V2(0,0);
+        orbit_hit_damage=G.bullets[i].dmg;
+    }
+    float orbit_proximity=1.0f-v2len(v2sub(G.ents[0].pos,G.pl.pos))/player_light_radius();
+    float orbit_single_damage=orbit_hit_damage*(1.0f+clampf(orbit_proximity,0.0f,1.0f)*0.20f);
+    update_bullets(0);
+    debug_invariant("glaive-orbit-independent-hit-damage",2000,(int)lroundf((1000.0f-G.ents[0].hp)/orbit_single_damage*1000.0f));
     memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
     G.pl.attack_cd=0; G.pl.glaive_out=false; G.pl.wrelics[1]=WR_GLAIVE_TWIN;
     attack_held=true; fire_weapon(0); attack_held=false;
     int orbit_twin_forward=0, orbit_twin_back=0;
