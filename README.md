@@ -17,8 +17,8 @@
 
 최신 실행 파일은 [Releases](../../releases)에서 받습니다.
 
-- Windows: `DisketteDungeon-1.0.0-win64.exe`
-- macOS: `DisketteDungeon-1.0.0-macos.zip` 압축을 푼 뒤 `DisketteDungeon.app` 실행
+- Windows: `DisketteDungeon-1.0.1-win64.exe`
+- macOS: `DisketteDungeon-1.0.1-macos.zip` 압축을 푼 뒤 `DisketteDungeon.app` 실행
 
 소스에서 빌드하려면 아래를 사용하세요.
 
