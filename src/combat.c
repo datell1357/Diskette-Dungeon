@@ -412,6 +412,54 @@ static void trigger_lance_pin(Bullet* pin){
     burst(pin->pos,12,COL(0x7CFCE4),110,0.4f,2.2f,true);
 }
 
+typedef struct { v2 end, reflected; } CannonRailCast;
+
+static CannonRailCast fire_cannon_rail_segment(v2 origin,v2 dir,float damage,float half_width,
+                                                float burn,float slow,bool crit,uint32_t attack_group,
+                                                bool delayed_fuse){
+    dir=v2norm(dir);
+    float max_len=v2len(V2(G.room.w*TILE,G.room.h*TILE));
+    CannonRailCast cast={origin,v2scale(dir,-1.0f)};
+    for (float distance=4.0f;distance<=max_len;distance+=4.0f){
+        v2 next=v2add(origin,v2scale(dir,distance));
+        bool out_x=next.x<0||next.x>=G.room.w*TILE;
+        bool out_y=next.y<0||next.y>=G.room.h*TILE;
+        if (out_x||out_y||tile_solid((int)(next.x/TILE),(int)(next.y/TILE))){
+            bool block_x=out_x||tile_solid((int)(next.x/TILE),(int)(cast.end.y/TILE));
+            bool block_y=out_y||tile_solid((int)(cast.end.x/TILE),(int)(next.y/TILE));
+            cast.reflected=dir;
+            if (block_x) cast.reflected.x=-cast.reflected.x;
+            if (block_y) cast.reflected.y=-cast.reflected.y;
+            if (!block_x&&!block_y) cast.reflected=v2scale(dir,-1.0f);
+            break;
+        }
+        cast.end=next;
+    }
+    v2 beam=v2sub(cast.end,origin);
+    float beam_len=v2len(beam);
+    Bullet* visual=spawn_bullet(true,14,origin,beam,damage,0.12f,half_width,999);
+    if (visual){ visual->burn=burn; visual->slow=slow; visual->crit=crit; visual->attack_group=attack_group; }
+    for (int i=0;i<MAX_ENTITIES;i++){
+        Entity* e=&G.ents[i];
+        if (!e->active||e->type==E_ECHO_GHOST) continue;
+        v2 offset=v2sub(e->pos,origin);
+        float forward=offset.x*dir.x+offset.y*dir.y;
+        float side=fabsf(offset.x*dir.y-offset.y*dir.x);
+        if (forward<-e->radius||forward>beam_len+e->radius||side>half_width+e->radius) continue;
+        v2 hit_pos=e->pos;
+        enemy_damage(e,damage,origin,burn,slow,crit,true,attack_group);
+        if (delayed_fuse){
+            Bullet* fuse=spawn_bullet(true,1,hit_pos,V2(0,0),damage,0.35f,half_width,0);
+            if (fuse){
+                fuse->fuse_armed=true;
+                fuse->burn=burn; fuse->slow=slow; fuse->crit=crit;
+                fuse->attack_group=attack_group;
+            }
+        }
+    }
+    return cast;
+}
+
 static void fire_weapon(float dt){
     Player* p=&G.pl;
     const WeaponDef* wd=&weapon_defs[p->weapon.type];
@@ -440,28 +488,19 @@ static void fire_weapon(float dt){
                 bool rail = player_has_wrelic(WR_CANNON_RAIL) && p->charge+0.00001f>=1.0f;
                 float brad = 4.0f+p->charge*4.0f;
                 bool recoil = player_has_wrelic(WR_CANNON_RECOIL);
-                if (recoil){ mul*=1.5f; brad*=1.4f; }
+                if (rail) mul*=recoil?1.5f:1.3f;
+                else if (recoil){ mul*=1.5f; brad*=1.4f; }
                 if (rail){
-                    float max_len=v2len(V2(G.room.w*TILE,G.room.h*TILE));
-                    v2 end=p->pos;
-                    for (float distance=4.0f;distance<=max_len;distance+=4.0f){
-                        v2 next=v2add(p->pos,v2scale(p->aim,distance));
-                        if (next.x<0||next.y<0||next.x>=G.room.w*TILE||next.y>=G.room.h*TILE||
-                            tile_solid((int)(next.x/TILE),(int)(next.y/TILE))) break;
-                        end=next;
-                    }
-                    v2 beam=v2sub(end,p->pos);
-                    float beam_len=v2len(beam), half_width=brad*0.5f;
-                    Bullet* b=spawn_bullet(true,14,p->pos,beam,dmg*mul,0.12f,half_width,999);
-                    if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->attack_group=p->attack_group; }
-                    for (int i=0;i<MAX_ENTITIES;i++){
-                        Entity* e=&G.ents[i];
-                        if (!e->active||e->type==E_ECHO_GHOST) continue;
-                        v2 offset=v2sub(e->pos,p->pos);
-                        float forward=offset.x*p->aim.x+offset.y*p->aim.y;
-                        float side=fabsf(offset.x*p->aim.y-offset.y*p->aim.x);
-                        if (forward>=-e->radius&&forward<=beam_len+e->radius&&side<=half_width+e->radius)
-                            enemy_damage(e,dmg*mul,p->pos,burn,slow,crit,true,p->attack_group);
+                    float half_width=brad*0.5f*1.3f*(recoil?2.0f:1.0f);
+                    CannonRailCast cast=fire_cannon_rail_segment(p->pos,p->aim,dmg*mul,half_width,
+                        burn,slow,crit,p->attack_group,player_has_wrelic(WR_CANNON_FUSE));
+                    if (player_has_wrelic(WR_CANNON_FRAG)){
+                        float base=atan2f(cast.reflected.y,cast.reflected.x);
+                        for (int k=0;k<4;k++){
+                            float angle=base+(k-1.5f)*0.22f;
+                            fire_cannon_rail_segment(cast.end,V2(cosf(angle),sinf(angle)),dmg*mul*0.4f,
+                                half_width,burn,slow,crit,p->attack_group,false);
+                        }
                     }
                 } else {
                     Bullet* b=spawn_bullet(true,1,p->pos,v2scale(p->aim,wd->speed),dmg*mul,1.2f,brad,3);
@@ -1338,7 +1377,7 @@ static void update_bullets(float dt){
             else if (arm_delayed_fuse(b)) continue;
             else { bullet_death_fx(b,false,V2(0,0)); b->active=false; continue; }
         }
-        if (b->kind==12||b->kind==13||b->kind==14) continue;
+        if (b->fuse_armed||b->kind==12||b->kind==13||b->kind==14) continue;
         if (b->kind==11){
             b->trail_t-=dt;
             if (b->trail_t<=0){

@@ -79,7 +79,9 @@ case "$action:$checkpoint" in
     fixture-ddd-ui-showcase:wand-charge-base|fixture-ddd-ui-showcase:wand-charge-25|fixture-ddd-ui-showcase:wand-charge-50|\
     fixture-ddd-ui-showcase:wand-charge-75|fixture-ddd-ui-showcase:wand-charge-full|\
     fixture-ddd-ui-showcase:cannon-frag-wall|fixture-ddd-ui-showcase:cannon-rail-start|\
-    fixture-ddd-ui-showcase:cannon-rail-mid|fixture-ddd-ui-showcase:cannon-rail-end)
+    fixture-ddd-ui-showcase:cannon-rail-mid|fixture-ddd-ui-showcase:cannon-rail-end|\
+    fixture-ddd-ui-showcase:cannon-rail-frag|fixture-ddd-ui-showcase:cannon-rail-fuse-start|\
+    fixture-ddd-ui-showcase:cannon-rail-fuse-end|fixture-ddd-ui-showcase:cannon-rail-recoil)
         [ -z "$core_count" ] && [ -z "$retry_phase" ] || fail "showcase fixtures do not accept core counts or retry phases"
         core_label=none
         ;;

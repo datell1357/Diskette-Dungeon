@@ -541,6 +541,10 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"cannon-rail-start")) DBG_CFG.showcase_checkpoint=26;
             else if(!strcmp(checkpoint,"cannon-rail-mid")) DBG_CFG.showcase_checkpoint=27;
             else if(!strcmp(checkpoint,"cannon-rail-end")) DBG_CFG.showcase_checkpoint=28;
+            else if(!strcmp(checkpoint,"cannon-rail-frag")) DBG_CFG.showcase_checkpoint=29;
+            else if(!strcmp(checkpoint,"cannon-rail-fuse-start")) DBG_CFG.showcase_checkpoint=30;
+            else if(!strcmp(checkpoint,"cannon-rail-fuse-end")) DBG_CFG.showcase_checkpoint=31;
+            else if(!strcmp(checkpoint,"cannon-rail-recoil")) DBG_CFG.showcase_checkpoint=32;
             else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
             else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
             else if(!strcmp(checkpoint,"retry")) DBG_CFG.opening_checkpoint=3;
