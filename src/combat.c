@@ -458,16 +458,17 @@ static void fire_weapon(float dt){
     if (p->weapon.type==WPN_WAND && player_has_wrelic(WR_WAND_DELAY)){
         if (attack_held){
             p->charging=true;
-            p->charge=clampf(p->charge+dt/2.0f,0,1);
+            p->charge=clampf(p->charge+dt/1.5f,0,1);
             return;
         }
         if (p->charging){
             p->charging=false;
             if (p->attack_cd<=0){
                 p->attack_group++;
-                int tiers=(p->charge>=0.3f)+(p->charge>=0.5f)+(p->charge>=0.7f)+(p->charge>=1.0f);
+                float charge=p->charge+0.00001f;
+                int tiers=(charge>=0.3f)+(charge>=0.5f)+(charge>=0.7f)+(charge>=1.0f);
                 int count=(player_has_wrelic(WR_WAND_FORK)?4:2)+tiers*2;
-                float shot_dmg=dmg*(p->charge>=1.0f?1.1f:1.0f);
+                float shot_dmg=dmg*(1.0f+tiers*0.075f);
                 if (tiers==0){
                     float base=atan2f(p->aim.y,p->aim.x);
                     for (int i=0;i<count;i++){
