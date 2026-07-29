@@ -661,6 +661,63 @@ static void weapon_relic_effect_lines(const char* text,char lines[3][96]){
     snprintf(lines[1],96,"%.*s",(int)(fourth-a-1),a+1);
     snprintf(lines[2],96,"%s",fourth+1);
 }
+static int utf8_char_len(const char* p){
+    unsigned char c=(unsigned char)*p;
+    if (c<0x80) return 1;
+    if ((c&0xE0)==0xC0) return 2;
+    if ((c&0xF0)==0xE0) return 3;
+    if ((c&0xF8)==0xF0) return 4;
+    return 1;
+}
+static void relic_swap_effect_lines(const char* text,float max_width,char lines[5][96]){
+    for (int i=0;i<5;i++) lines[i][0]=0;
+    int line=0;
+    const char* p=text;
+    while (*p && line<5){
+        while (*p==' ') p++;
+        if (!*p) break;
+        char word[96]={0};
+        int n=0;
+        while (p[n] && p[n]!=' ' && n<(int)sizeof(word)-4){
+            int step=utf8_char_len(p+n);
+            if (n+step>=(int)sizeof(word)) break;
+            n+=step;
+        }
+        memcpy(word,p,(size_t)n);
+        word[n]=0;
+        if (lines[line][0]){
+            char combined[96];
+            strcpy(combined,lines[line]);
+            strncat(combined," ",sizeof(combined)-strlen(combined)-1);
+            strncat(combined,word,sizeof(combined)-strlen(combined)-1);
+            if (text_width(combined,0.24f)<=max_width){
+                snprintf(lines[line],sizeof(lines[line]),"%s",combined);
+                p+=n;
+                continue;
+            }
+            line++;
+            if (line>=5) break;
+        }
+        while (word[0] && line<5){
+            int bytes=0;
+            char partial[96]={0};
+            while (word[bytes]){
+                int step=utf8_char_len(word+bytes);
+                char candidate[96];
+                strcpy(candidate,partial);
+                strncat(candidate,word+bytes,(size_t)step);
+                if (partial[0] && text_width(candidate,0.24f)>max_width) break;
+                snprintf(partial,sizeof(partial),"%s",candidate);
+                bytes+=step;
+            }
+            snprintf(lines[line],sizeof(lines[line]),"%s",partial);
+            if (!word[bytes]) break;
+            memmove(word,word+bytes,strlen(word+bytes)+1);
+            line++;
+        }
+        p+=n;
+    }
+}
 static void codex_detail_effect_lines(const char* text,char lines[3][96]){
     if (text_width(text,0.48f)<=190.0f){
         snprintf(lines[0],96,"%.95s",text);
@@ -928,23 +985,23 @@ static void draw_relic_swap_card(float x,float y,float w,float h,int type,int id
     const char* name=weapon?weapon_relic_defs[id].name:relic_defs[id].name;
     const char* desc=weapon?weapon_relic_defs[id].desc:relic_defs[id].desc;
     col3 c=weapon?weapon_relic_color(weapon_relic_defs[id].weapon):COL(0x9FFFF0);
-    char lines[3][96];
-    weapon_relic_effect_lines(desc,lines);
+    char lines[5][96];
+    relic_swap_effect_lines(desc,w-16,lines);
     draw_quad(x-2,y-2,w+4,h+4,selected?COL(0xFFFFFF):COL(0x08050D),selected?0.95f:0.9f);
     draw_quad(x,y,w,h,c,0.62f);
     draw_quad(x+2,y+2,w-4,h-4,COL(0x0B0710),0.94f);
-    draw_text_center(weapon?weapon_relic_type_name(weapon_relic_defs[id].weapon):"일반 유물",x+w*0.5f,y+8,0.38f,c,1);
-    draw_text_center(name,x+w*0.5f,y+22,0.52f,COL(0xFFF0D0),1);
-    for (int i=0;i<3;i++) if (lines[i][0])
-        draw_text_center(lines[i],x+w*0.5f,y+40+i*12,0.24f,COL(0xFFFFFF),1);
+    draw_text_center(weapon?weapon_relic_type_name(weapon_relic_defs[id].weapon):"일반 유물",x+w*0.5f,y+7,0.38f,c,1);
+    draw_text_center(name,x+w*0.5f,y+20,0.52f,COL(0xFFF0D0),1);
+    for (int i=0;i<5;i++) if (lines[i][0])
+        draw_text_center(lines[i],x+w*0.5f,y+34+i*11,0.24f,COL(0xFFFFFF),1);
 }
 
 static void draw_relic_swap(void){
     bool weapon=G.relic_swap_type==PK_WRELIC;
     int count=weapon?2:4;
     draw_overlay_bg(0.9f);
-    draw_text_center("새 유물",VIRT_W*0.5f,14,0.75f,COL(0xFFFFFF),1);
-    draw_relic_swap_card(130,28,220,72,G.relic_swap_type,G.relic_swap_id,false);
+    draw_text_center("새 유물",VIRT_W*0.5f,5,0.75f,COL(0xFFFFFF),1);
+    draw_relic_swap_card(130,20,220,90,G.relic_swap_type,G.relic_swap_id,false);
     draw_text_center("교체할 보유 유물 선택",VIRT_W*0.5f,116,0.62f,COL(0xE8E0F8),1);
     float w=weapon?180.0f:104.0f;
     float gap=weapon?28.0f:12.0f;
@@ -952,7 +1009,7 @@ static void draw_relic_swap(void){
     float x=(VIRT_W-total)*0.5f;
     for (int i=0;i<count;i++){
         int id=weapon?G.pl.wrelics[G.relic_swap_slots[i]]:G.relic_swap_slots[i];
-        draw_relic_swap_card(x+i*(w+gap),142,w,76,G.relic_swap_type,id,G.relic_swap_sel==i);
+        draw_relic_swap_card(x+i*(w+gap),136,w,90,G.relic_swap_type,id,G.relic_swap_sel==i);
     }
     draw_text_center("A/D 또는 ←/→ : 선택 · Enter/Space : 교체 · Esc : 현재 상태 유지",VIRT_W*0.5f,244,0.42f,COL(0xB8FFF0),1);
 }
@@ -3311,6 +3368,7 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==4) return "hit";
     if (DBG_CFG.showcase_checkpoint==5) return "boss-reward";
     if (DBG_CFG.showcase_checkpoint==6) return "relic-swap";
+    if (DBG_CFG.showcase_checkpoint==10) return "weapon-relic-swap";
     if (DBG_CFG.showcase_checkpoint==7) return "memory-event";
     if (DBG_CFG.showcase_checkpoint==8) return "boss-intro";
     if (DBG_CFG.showcase_checkpoint==9) return "core-flashback";
@@ -3325,7 +3383,7 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8) return ST_PLAY;
-    if (DBG_CFG.showcase_checkpoint==6) return ST_RELIC_SWAP;
+    if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
 static void debug_showcase_emit(void){
@@ -3425,6 +3483,13 @@ static void debug_prepare_ui_showcase(void){
         spawn_pickup(PK_RELIC,G.pl.pos,(Weapon){0,0},RELIC_LUMINANCE,0);
         debug_invariant("showcase-relic-swap",1,player_try_pickup(&G.pickups[0])?1:0);
         debug_invariant("showcase-relic-swap-state",ST_RELIC_SWAP,G.state);
+    } else if (DBG_CFG.showcase_checkpoint==10) {
+        G.pl.wrelics[0]=WR_SWORD_WAVE;
+        G.pl.wrelics[1]=WR_SWORD_WHIRL;
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.5f);
+        spawn_pickup(PK_WRELIC,G.pl.pos,(Weapon){0,0},WR_SWORD_EXECUTE,0);
+        debug_invariant("showcase-weapon-relic-swap",1,player_try_pickup(&G.pickups[0])?1:0);
+        debug_invariant("showcase-weapon-relic-swap-state",ST_RELIC_SWAP,G.state);
     } else if (DBG_CFG.showcase_checkpoint==7) {
         G.room.event_type=MEM_EVENT_CORRUPTED;
         G.room.event_tag=MEM_TAG_PROMISE;

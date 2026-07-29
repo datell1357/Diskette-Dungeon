@@ -519,6 +519,7 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"hit")) DBG_CFG.showcase_checkpoint=4;
             else if(!strcmp(checkpoint,"boss-reward")) DBG_CFG.showcase_checkpoint=5;
             else if(!strcmp(checkpoint,"relic-swap")) DBG_CFG.showcase_checkpoint=6;
+            else if(!strcmp(checkpoint,"weapon-relic-swap")) DBG_CFG.showcase_checkpoint=10;
             else if(!strcmp(checkpoint,"memory-event")) DBG_CFG.showcase_checkpoint=7;
             else if(!strcmp(checkpoint,"boss-intro")) DBG_CFG.showcase_checkpoint=8;
             else if(!strcmp(checkpoint,"core-flashback")) DBG_CFG.showcase_checkpoint=9;
