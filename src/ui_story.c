@@ -295,8 +295,19 @@ void draw_play(void){
     if (G.training_active){
         v2 button=V2(VIRT_W*(2.0f/3.0f),88.0f);
         bool nearby=v2len(v2sub(G.pl.pos,button))<=24.0f;
-        col3 color=G.training_summon_cd<=0?(nearby?COL(0x9FFFF0):COL(0x3FE0C5)):COL(0x4B5368);
-        draw_ring(button.x,button.y,5.5f,color,0.95f);
+        col3 face=G.training_summon_cd<=0?(nearby?COL(0x3FE0C5):COL(0x287A73)):COL(0x34394A);
+        for (int iy=-4;iy<=4;iy++){
+            float half=sqrtf(25.0f-(float)(iy*iy));
+            draw_line(button.x-half,button.y+1.5f+(float)iy,
+                      button.x+half,button.y+1.5f+(float)iy,1.2f,COL(0x08060D),0.9f);
+            draw_line(button.x-half,button.y-0.5f+(float)iy,
+                      button.x+half,button.y-0.5f+(float)iy,1.2f,face,0.96f);
+        }
+        draw_ring(button.x,button.y-0.5f,5.5f,nearby?COL(0xBFFFF4):COL(0x3FE0C5),0.95f);
+        draw_line(button.x-2.5f,button.y-3.5f,button.x+2.5f,button.y-3.5f,
+                  1.0f,COL(0xE8FFF9),0.72f);
+        draw_line(button.x-2.5f,button.y+3.5f,button.x+2.5f,button.y+3.5f,
+                  1.0f,COL(0x10282A),0.8f);
     }
     // 픽업
     // 기억 이벤트 — 방 클리어 뒤 배드 섹터에 남은 조각
@@ -4100,7 +4111,7 @@ static void debug_prepare_ui_showcase(void){
     } else if (DBG_CFG.showcase_checkpoint==37) {
         start_training();
         G.state=ST_TRAINING;
-        G.pl.pos=V2(VIRT_W*(2.0f/3.0f),88.0f);
+        G.pl.pos=V2(VIRT_W*(2.0f/3.0f)-18.0f,88.0f);
         training_try_summon();
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
