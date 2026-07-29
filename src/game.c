@@ -69,7 +69,7 @@ const WeaponRelicDef weapon_relic_defs[WR_COUNT] = {
     {"분기 호출",   WPN_WAND,   88, "유도탄 2→4발"},
     {"연쇄 메아리", WPN_WAND,   80, "탄 명중 시 가까운 적에게 연쇄한다"},
     {"공명 고리",   WPN_WAND,   88, "명중 지점 주변에 40% 공명 피해를 준다"},
-    {"지연 에코",   WPN_WAND,   80, "명중한 적에게 잠시 뒤 60% 추가 피해"},
+    {"폭우",        WPN_WAND,   80, "2초 차지, 단계마다 좌우 유도탄 +2"},
 };
 bool player_has_wrelic(int wr){ return G.pl.wrelics[0]==wr || G.pl.wrelics[1]==wr; }
 int player_wrelic_count(void){ int n=0; if(G.pl.wrelics[0]>=0)n++; if(G.pl.wrelics[1]>=0)n++; return n; }

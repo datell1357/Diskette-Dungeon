@@ -429,6 +429,13 @@ void draw_play(void){
             draw_ring(b->pos.x,b->pos.y,7.0f,COL(0x7CFCE4),pulse);
             continue;
         }
+        if (b->kind==13){
+            float prog=clampf(1.0f-b->life/0.22f,0,1);
+            float radius=8.0f+(b->radius-8.0f)*prog;
+            draw_ring(b->pos.x,b->pos.y,radius,COL(0x7CFCE4),(1.0f-prog)*0.85f);
+            draw_ring(b->pos.x,b->pos.y,radius*0.7f,COL(0x9FFFF0),(1.0f-prog)*0.45f);
+            continue;
+        }
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -511,6 +518,7 @@ void draw_play(void){
             draw_light_blob(b->pos.x,b->pos.y,b->radius*1.8f,(col3){1.5f,0.28f,0.06f},0.12f*fade);
             continue;
         }
+        if (b->kind==13) continue;
         col3 c=b->from_player?COL(0x3FE0C5):COL(0xFF3D7F);
         draw_light_blob(b->pos.x,b->pos.y,b->radius*5.0f,c,0.5f);
     }
@@ -555,7 +563,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
-        if (b->kind==11) continue;
+        if (b->kind==11||b->kind==13) continue;
         col3 c=b->from_player?COL(0x7CFCE4):COL(0xFF3D7F);
         draw_glow_blob(b->pos.x,b->pos.y,b->radius*3.0f,c,0.55f);
     }
@@ -3020,18 +3028,59 @@ static void debug_fixture_modifiers(void){
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_WAND; G.pl.pos=fixture_pos;
-    G.pl.wrelics[0]=WR_WAND_RING; G.pl.wrelics[1]=WR_WAND_DELAY;
+    G.pl.wrelics[0]=WR_WAND_RING; G.pl.wrelics[1]=-1;
     G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),20.0f,20.0f,7.0f};
     G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),20.0f,20.0f,7.0f};
     Bullet* wand=spawn_bullet(true,5,fixture_pos,V2(0,0),4.0f,1.0f,3.5f,0);
     wand->attack_group=96;
     update_bullets(0);
-    int delayed_count=0;
-    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==10) delayed_count++;
+    wand=spawn_bullet(true,5,fixture_pos,V2(0,0),4.0f,1.0f,3.5f,0);
+    wand->attack_group=96;
+    update_bullets(0);
+    int ring_effects=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==13) ring_effects++;
     debug_invariant("wand-ring-damages-nearby",1,G.ents[1].hp<20.0f?1:0);
-    debug_invariant("wand-delay-spawns-echo",1,delayed_count);
-    update_bullets(0.4f);
-    debug_invariant("wand-delay-damages-target",1,G.ents[0].hp<16.0f?1:0);
+    debug_invariant("wand-ring-merges-same-attack-range-effect",1,ring_effects);
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_WAND_DELAY; G.pl.wrelics[1]=-1;
+    G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.attack_cd=0;
+    attack_held=true; G.pl.charge=0; G.pl.charging=false;
+    fire_weapon(0.6f);
+    attack_held=false;
+    debug_invariant("wand-rain-charge-time-30-percent",300,(int)lroundf(G.pl.charge*1000.0f));
+    fire_weapon(0);
+    int rain_count=0, rain_left=0, rain_right=0, rain_forward=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
+        Bullet* rain=&G.bullets[i]; rain_count++;
+        if (rain->pos.y<G.pl.pos.y) rain_left++; else if (rain->pos.y>G.pl.pos.y) rain_right++;
+        if (fabsf(rain->vel.x)>0.01f) rain_forward++;
+    }
+    debug_invariant("wand-rain-tier-30-count",4,rain_count);
+    debug_invariant("wand-rain-tier-30-splits-left",2,rain_left);
+    debug_invariant("wand-rain-tier-30-splits-right",2,rain_right);
+    debug_invariant("wand-rain-does-not-fire-forward",0,rain_forward);
+    static const float rain_charge[3]={0.5f,0.7f,1.0f};
+    static const int rain_expected[3]={6,8,10};
+    static const char* rain_name[3]={"wand-rain-tier-50-count","wand-rain-tier-70-count","wand-rain-tier-100-count"};
+    for (int tier=0;tier<3;tier++){
+        memset(G.bullets,0,sizeof G.bullets);
+        G.pl.attack_cd=0; G.pl.charge=rain_charge[tier]; G.pl.charging=true;
+        fire_weapon(0);
+        rain_count=0;
+        for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5) rain_count++;
+        debug_invariant(rain_name[tier],rain_expected[tier],rain_count);
+    }
+    float rain_base=player_attack_damage();
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
+        debug_invariant("wand-rain-full-charge-damage-plus-10",(int)lroundf(rain_base*1.1f*1000.0f),(int)lroundf(G.bullets[i].dmg*1000.0f));
+        break;
+    }
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.attack_cd=0; G.pl.charge=0; G.pl.charging=false; attack_held=true;
+    fire_weapon(2.5f);
+    attack_held=false;
+    debug_invariant("wand-rain-charge-caps-at-two-seconds",1000,(int)lroundf(G.pl.charge*1000.0f));
     G.light_mul=old_light; G.pl.relics[RELIC_LUMINANCE]=old_lum; G.meta.upg[3]=old_upg;
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"modifiers\",\"status\":\"pass\"}\n");
 }
@@ -3595,6 +3644,9 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==14) return "lance-thrust-start";
     if (DBG_CFG.showcase_checkpoint==15) return "lance-thrust-mid";
     if (DBG_CFG.showcase_checkpoint==16) return "lance-thrust-end";
+    if (DBG_CFG.showcase_checkpoint==17) return "wand-rain-start";
+    if (DBG_CFG.showcase_checkpoint==18) return "wand-rain-mid";
+    if (DBG_CFG.showcase_checkpoint==19) return "wand-rain-end";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3606,7 +3658,7 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
-        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=16)) return ST_PLAY;
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=19)) return ST_PLAY;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -3761,6 +3813,20 @@ static void debug_prepare_ui_showcase(void){
             G.ents[i].hp=G.ents[i].maxhp=100.0f;
             G.ents[i].spawn_t=0;
         }
+    } else if (DBG_CFG.showcase_checkpoint>=17 && DBG_CFG.showcase_checkpoint<=19) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.70f);
+        G.pl.weapon.type=WPN_WAND;
+        G.pl.wrelics[0]=WR_WAND_DELAY;
+        G.pl.wrelics[1]=WR_WAND_RING;
+        G.pl.aim=V2(0,-1);
+        G.room.cleared=true;
+        spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(0,-92.0f)));
+        G.ents[0].hp=G.ents[0].maxhp=100.0f;
+        G.ents[0].spawn_t=0;
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3791,6 +3857,34 @@ static void debug_showcase_tick(float dt){
         lance_thrust_t=thrust_time[DBG_CFG.showcase_checkpoint-14];
         lance_thrust_dir=V2(1,0);
         lance_thrust_reach=68.0f;
+        G.pl.vel=V2(0,0);
+        G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint>=17 && DBG_CFG.showcase_checkpoint<=19){
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.parts,0,sizeof G.parts);
+        memset(G.floaters,0,sizeof G.floaters);
+        memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
+        G.ents[0].active=true; G.ents[0].pos=v2add(G.pl.pos,V2(0,-92.0f));
+        G.ents[0].hp=G.ents[0].maxhp=100.0f; G.ents[0].vel=V2(0,0); G.ents[0].spawn_t=0;
+        G.pl.attack_cd=0; G.pl.charge=1.0f; G.pl.charging=true; G.pl.impact_group=0;
+        attack_held=false;
+        fire_weapon(0);
+        if (DBG_CFG.showcase_checkpoint==18){
+            for (int step=0;step<22;step++) update_bullets(1.0f/120.0f);
+        } else if (DBG_CFG.showcase_checkpoint==19){
+            for (int step=0;step<120;step++){
+                update_bullets(1.0f/120.0f);
+                bool shots=false, ring=false;
+                for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active){
+                    if (G.bullets[i].kind==5) shots=true;
+                    if (G.bullets[i].kind==13) ring=true;
+                }
+                if (ring&&!shots){
+                    for (int settle=0;settle<10;settle++) update_bullets(1.0f/120.0f);
+                    break;
+                }
+            }
+        }
         G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
     }

@@ -41,7 +41,7 @@ JSONL outputs.
 ```sh
 # Build modes (the invalid mode exits 2 and does not mutate either binary).
 DD_DEBUG_BUILD=1 sh tools/build_mac.sh
-DD_DEBUG_BUILD=0 sh tools/build_mac.sh
+DD_DEBUG_BUILD=0 sh tools/build_mac.sh  # Finder 실행용 build/DisketteDungeon.app 포함
 DD_DEBUG_BUILD=2 sh tools/build_mac.sh
 
 # Ten deterministic snapshot pairs: run each command twice.

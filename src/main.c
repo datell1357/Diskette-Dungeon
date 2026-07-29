@@ -529,6 +529,9 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"lance-thrust-start")) DBG_CFG.showcase_checkpoint=14;
             else if(!strcmp(checkpoint,"lance-thrust-mid")) DBG_CFG.showcase_checkpoint=15;
             else if(!strcmp(checkpoint,"lance-thrust-end")) DBG_CFG.showcase_checkpoint=16;
+            else if(!strcmp(checkpoint,"wand-rain-start")) DBG_CFG.showcase_checkpoint=17;
+            else if(!strcmp(checkpoint,"wand-rain-mid")) DBG_CFG.showcase_checkpoint=18;
+            else if(!strcmp(checkpoint,"wand-rain-end")) DBG_CFG.showcase_checkpoint=19;
             else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
             else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
             else if(!strcmp(checkpoint,"retry")) DBG_CFG.opening_checkpoint=3;

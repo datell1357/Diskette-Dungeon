@@ -455,6 +455,38 @@ static void fire_weapon(float dt){
         }
         return;
     }
+    if (p->weapon.type==WPN_WAND && player_has_wrelic(WR_WAND_DELAY)){
+        if (attack_held){
+            p->charging=true;
+            p->charge=clampf(p->charge+dt/2.0f,0,1);
+            return;
+        }
+        if (p->charging){
+            p->charging=false;
+            if (p->attack_cd<=0){
+                p->attack_group++;
+                int tiers=(p->charge>=0.3f)+(p->charge>=0.5f)+(p->charge>=0.7f)+(p->charge>=1.0f);
+                int count=(player_has_wrelic(WR_WAND_FORK)?4:2)+tiers*2;
+                int half=count/2;
+                float shot_dmg=dmg*(p->charge>=1.0f?1.1f:1.0f);
+                v2 side=V2(-p->aim.y,p->aim.x);
+                for (int group=0;group<2;group++){
+                    float sign=group==0?-1.0f:1.0f;
+                    for (int i=0;i<half;i++){
+                        float stagger=((float)i-(float)(half-1)*0.5f)*12.0f;
+                        v2 pos=v2add(v2add(p->pos,v2scale(side,sign*14.0f)),v2scale(p->aim,stagger));
+                        Bullet* b=spawn_bullet(true,5,pos,v2scale(side,sign*wd->speed),shot_dmg,1.6f,3.5f,0);
+                        if (b){ b->burn=burn;b->slow=slow;b->crit=crit; }
+                    }
+                }
+                p->attack_cd=wd->cooldown*cd_mul*kinship_cd_mul;
+                G.shake=fmaxf(G.shake,1.0f+p->charge);
+                sfx_play(SFX_SHOOT);
+            }
+            p->charge=0;
+        }
+        return;
+    }
     if (!attack_held || p->attack_cd>0) return;
     p->attack_cd = wd->cooldown*cd_mul*kinship_cd_mul;
     p->attack_group++;
@@ -1268,19 +1300,10 @@ static void update_bullets(float dt){
         if (b->life<=0){
             if (b->kind==3){ begin_glaive_return(b,p); b->life=3.0f; }
             else if (b->kind==12){ trigger_lance_pin(b); b->active=false; continue; }
-            else if (b->kind==10){
-                if (b->last_hit>=0 && b->last_hit<MAX_ENTITIES){
-                    Entity* target=&G.ents[b->last_hit];
-                    if (target->active && target->type!=E_ECHO_GHOST)
-                        enemy_damage(target,b->dmg,b->pos,b->burn,b->slow,b->crit,true,b->attack_group);
-                }
-                b->active=false;
-                continue;
-            }
             else if (arm_delayed_fuse(b)) continue;
             else { bullet_death_fx(b); b->active=false; continue; }
         }
-        if (b->kind==10||b->kind==12) continue;
+        if (b->kind==12||b->kind==13) continue;
         if (b->kind==11){
             b->trail_t-=dt;
             if (b->trail_t<=0){
@@ -1387,16 +1410,23 @@ static void update_bullets(float dt){
                     if (b->kind==4 && player_has_wrelic(WR_LANCE_BLAST)) lance_stops=true;
                     if (b->kind==4 && player_has_wrelic(WR_LANCE_PIERCE) && !lance_stops) b->dmg*=1.2f;
                     if (b->kind==5 && player_has_wrelic(WR_WAND_RING)){
+                        Bullet* ring=NULL;
+                        for (int k=0;k<MAX_BULLETS;k++){
+                            Bullet* candidate=&G.bullets[k];
+                            if (candidate->active&&candidate->kind==13&&candidate->attack_group==b->attack_group&&
+                                v2len(v2sub(candidate->pos,b->pos))<8.0f){ ring=candidate; break; }
+                        }
+                        if (ring){ ring->pos=b->pos; ring->life=0.22f; }
+                        else {
+                            ring=spawn_bullet(true,13,b->pos,V2(0,0),0,0.22f,30.0f,0);
+                            if (ring) ring->attack_group=b->attack_group;
+                        }
                         for (int k=0;k<MAX_ENTITIES;k++){
                             Entity* other=&G.ents[k];
                             if (!other->active||other==e||other->type==E_ECHO_GHOST) continue;
                             if (v2len(v2sub(other->pos,b->pos))<30.0f)
                                 enemy_damage(other,b->dmg*0.4f,b->pos,b->burn,b->slow,false,true,b->attack_group);
                         }
-                    }
-                    if (b->kind==5 && player_has_wrelic(WR_WAND_DELAY)){
-                        Bullet* echo=spawn_bullet(true,10,e->pos,V2(0,0),b->dmg*0.6f,0.35f,0.0f,0);
-                        if (echo){ echo->last_hit=j; echo->attack_group=b->attack_group; echo->burn=b->burn; echo->slow=b->slow; echo->crit=b->crit; }
                     }
                     // 연쇄 메아리: 유도탄 명중 시 가까운 다른 적에게 작은 연쇄탄
                     if (b->kind==5 && player_has_wrelic(WR_WAND_CHAIN)){

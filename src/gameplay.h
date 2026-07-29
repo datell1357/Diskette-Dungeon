@@ -58,7 +58,7 @@ typedef struct {
 
 typedef struct {
     bool active, from_player;
-    int kind;              // 시각/거동: 0 탄, 1 빔탄, 2 펠릿, 3 글레이브, 4 랜스, 5 유도, 6 포자, 7 보스탄, 11 화상지대, 12 핀
+    int kind;              // 시각/거동: 0 탄, 1 빔탄, 2 펠릿, 3 글레이브, 4 랜스, 5 유도, 6 포자, 7 보스탄, 11 화상지대, 12 핀, 13 공명
     v2 pos, vel;
     float life, dmg, radius;
     int pierce;

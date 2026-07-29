@@ -34,4 +34,22 @@ fi
 clang -o "$output" build/sokol_impl_mac.o build/game_mac.o \
     -framework Cocoa -framework Metal -framework MetalKit -framework QuartzCore \
     -framework AudioToolbox
+if [ "$debug_build" = 0 ]; then
+    app="build/DisketteDungeon.app"
+    mkdir -p "$app/Contents/MacOS"
+    cp "$output" "$app/Contents/MacOS/DisketteDungeon"
+    cat > "$app/Contents/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>DisketteDungeon</string>
+  <key>CFBundleIdentifier</key><string>com.datell1357.diskettedungeon</string>
+  <key>CFBundleName</key><string>Diskette Dungeon</string>
+  <key>CFBundleDisplayName</key><string>Diskette Dungeon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+EOF
+    echo "OK: $app"
+fi
 echo "OK: $output"
