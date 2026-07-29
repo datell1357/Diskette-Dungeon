@@ -570,6 +570,7 @@ static void fire_weapon(float dt){
     float burn = p->weapon.prefix==PFX_HOT? 3.0f:0.0f;
     float slow = p->weapon.prefix==PFX_COLD? 2.0f:0.0f;
     bool crit = p->weapon.prefix==PFX_BROKEN && rng_i(&crng,10)<3;
+    bool sword_tap_attack=false;
     if (sword_wave && !sword_whirl) dmg*=1.2f;
     if (crit) dmg*=2.0f;
 
@@ -581,14 +582,17 @@ static void fire_weapon(float dt){
             return;
         }
         if (p->charging){
+            float charge=p->charge;
             p->charging=false;
-            if (p->attack_cd<=0){
+            p->charge=0;
+            if (charge+0.00001f<0.25f) sword_tap_attack=true;
+            else if (p->attack_cd<=0){
                 p->attack_group++;
                 phase_attack=(PhaseAttack){
                     .active=true,
-                    .full=p->charge+0.00001f>=1.0f,
-                    .hits_left=sword_phase_charge_hits(p->charge),
-                    .damage=dmg*0.9f,
+                    .full=charge+0.00001f>=1.0f,
+                    .hits_left=sword_phase_charge_hits(charge),
+                    .damage=dmg*1.1f,
                     .burn=burn,
                     .slow=slow,
                     .crit=crit,
@@ -599,9 +603,9 @@ static void fire_weapon(float dt){
                 update_phase_attack(0);
                 sfx_play(SFX_SHOOT);
             }
-            p->charge=0;
+            if (!sword_tap_attack) return;
         }
-        return;
+        else return;
     }
 
     // 비트 캐논: 차징
@@ -688,7 +692,7 @@ static void fire_weapon(float dt){
         }
         return;
     }
-    if (!attack_held || p->attack_cd>0) return;
+    if ((!attack_held && !sword_tap_attack) || p->attack_cd>0) return;
     p->attack_cd = wd->cooldown*cd_mul*kinship_cd_mul;
     p->attack_group++;
 

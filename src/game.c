@@ -48,7 +48,7 @@ const RelicDef relic_defs[RELIC_COUNT] = {
 const WeaponRelicDef weapon_relic_defs[WR_COUNT] = {
     {"검기 칩",     WPN_SWORD,  88, "공속 -50%·피해 +20%, 반달 검기 발사"},
     {"회전 베기",   WPN_SWORD,  80, "전방향을 베고 적 탄막을 상쇄한다"},
-    {"위상 스텝",   WPN_SWORD, 104, "3초 차지, 단계별 1/2/3/4/6회 90% 위상 공격"},
+    {"위상 스텝",   WPN_SWORD, 104, "탭 기본 공격 · 25/50/75/100%: 2/3/4/6회(110%)"},
     {"처형 루틴",   WPN_SWORD,  96, "25% 이하 일반 적 처형, 0.25 회복과 120% 범위 피해"},
     {"파편 탄두",   WPN_CANNON, 96, "벽 반사 6파편, 레일 조합 시 40% 반사 레이저 4갈래"},
     {"관통 레일",   WPN_CANNON, 88, "완충 피해·폭 +30% 직선 레이저"},
@@ -78,7 +78,7 @@ int wand_rain_charge_tier(float charge){
 }
 int sword_phase_charge_hits(float charge){
     int tier=wand_rain_charge_tier(charge);
-    static const int hits[5]={1,2,3,4,6};
+    static const int hits[5]={0,2,3,4,6};
     return hits[tier];
 }
 int player_wrelic_count(void){ int n=0; if(G.pl.wrelics[0]>=0)n++; if(G.pl.wrelics[1]>=0)n++; return n; }

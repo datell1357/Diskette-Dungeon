@@ -558,7 +558,8 @@ void draw_play(void){
                     draw_quad(x+width*marks[i]-0.5f,y-1,1,4,COL(0xE8FFF9),ch+0.00001f>=marks[i]?0.95f:0.42f);
                 if (p->weapon.type==WPN_SWORD){
                     char hit_count[8];
-                    snprintf(hit_count,sizeof(hit_count),"x%d",sword_phase_charge_hits(ch));
+                    int hits=sword_phase_charge_hits(ch);
+                    snprintf(hit_count,sizeof(hit_count),hits>0?"x%d":"기본",hits);
                     draw_text(hit_count,x+width+3.0f,y-2.0f,0.34f,stage_colors[wand_rain_charge_tier(ch)],0.95f);
                 }
             } else {
@@ -2897,18 +2898,36 @@ static void debug_fixture_modifiers(void){
     memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
     G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(80,80); G.pl.hp=3.0f; G.pl.maxhp=5;
     G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=-1;
-    debug_invariant("sword-phase-below-25-hits",1,sword_phase_charge_hits(0.249f));
+    debug_invariant("sword-phase-below-25-uses-base-attack",0,sword_phase_charge_hits(0.249f));
     debug_invariant("sword-phase-25-hits",2,sword_phase_charge_hits(0.25f));
     debug_invariant("sword-phase-50-hits",3,sword_phase_charge_hits(0.50f));
     debug_invariant("sword-phase-75-hits",4,sword_phase_charge_hits(0.75f));
     debug_invariant("sword-phase-100-hits",6,sword_phase_charge_hits(1.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=WR_SWORD_WAVE;
+    G.pl.attack_cd=0; G.pl.charge=0.1f; G.pl.charging=true; attack_held=false;
+    fire_weapon(0);
+    int phase_tap_waves=0;
+    for (int i=0;i<MAX_BULLETS;i++)
+        if (G.bullets[i].active&&G.bullets[i].from_player&&G.bullets[i].kind==8) phase_tap_waves++;
+    debug_invariant("sword-phase-tap-uses-wave",1,phase_tap_waves);
+    debug_invariant("sword-phase-tap-skips-phase",0,phase_attack.active?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=WR_SWORD_WHIRL;
+    Bullet* phase_tap_hostile=spawn_bullet(false,1,G.pl.pos,V2(0,0),1.0f,1.0f,2.0f,0);
+    G.pl.attack_cd=0; G.pl.charge=0.1f; G.pl.charging=true;
+    fire_weapon(0);
+    debug_invariant("sword-phase-tap-uses-whirl",1,phase_tap_hostile&&!phase_tap_hostile->active?1:0);
+    debug_invariant("sword-phase-tap-whirl-animation",1,slash_t>0?1:0);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=-1;
     G.ents[0]=(Entity){true,E_BAT,V2(120,80),V2(0,0),1000.0f,1000.0f,7.0f};
     G.pl.attack_cd=0; G.pl.charge=1.0f; G.pl.charging=true; attack_held=false;
     fire_weapon(0);
     for (int i=0;i<5;i++) update_phase_attack(0.2f);
     debug_invariant("sword-phase-full-six-hits",6,G.enemy_feedback[0].hits);
-    debug_invariant("sword-phase-damage-90-percent",
-                    (int)lroundf(player_attack_damage()*900.0f),
+    debug_invariant("sword-phase-damage-110-percent",
+                    (int)lroundf(player_attack_damage()*1100.0f),
                     (int)lroundf(phase_attack.damage*1000.0f));
     debug_invariant("sword-phase-step-invulnerability",1,G.pl.iframes>=0.2f?1:0);
     memset(G.ents,0,sizeof G.ents); memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
