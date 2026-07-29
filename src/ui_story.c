@@ -295,10 +295,8 @@ void draw_play(void){
     if (G.training_active){
         v2 button=V2(VIRT_W*(2.0f/3.0f),88.0f);
         bool nearby=v2len(v2sub(G.pl.pos,button))<=24.0f;
-        float ready=G.training_summon_cd<=0?1.0f:clampf(1.0f-G.training_summon_cd,0.0f,1.0f);
-        draw_quad(button.x-11,button.y-6,22,12,nearby?COL(0x284C54):COL(0x171425),0.94f);
-        draw_quad(button.x-9,button.y+4,18*ready,1,COL(0x3FE0C5),0.9f);
-        draw_text_center("E",button.x,button.y-4,0.32f,COL(0x9FFFF0),1);
+        col3 color=G.training_summon_cd<=0?(nearby?COL(0x9FFFF0):COL(0x3FE0C5)):COL(0x4B5368);
+        draw_ring(button.x,button.y,5.5f,color,0.95f);
     }
     // 픽업
     // 기억 이벤트 — 방 클리어 뒤 배드 섹터에 남은 조각
@@ -2898,7 +2896,9 @@ static void debug_fixture_modifiers(void){
     fire_weapon(0);
     for (int i=0;i<5;i++) update_phase_attack(0.2f);
     debug_invariant("sword-phase-full-six-hits",6,G.enemy_feedback[0].hits);
-    debug_invariant("sword-phase-double-damage",1,G.ents[0].hp<960.0f?1:0);
+    debug_invariant("sword-phase-damage-90-percent",
+                    (int)lroundf(player_attack_damage()*900.0f),
+                    (int)lroundf(phase_attack.damage*1000.0f));
     debug_invariant("sword-phase-step-invulnerability",1,G.pl.iframes>=0.2f?1:0);
     memset(G.ents,0,sizeof G.ents); memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
     G.pl.pos=V2(80,80); G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=WR_SWORD_WHIRL;
