@@ -16,6 +16,9 @@ bool mouse_present;
 
 float combat_slash_t(void);
 v2 combat_slash_dir(void);
+float combat_lance_thrust_t(void);
+v2 combat_lance_thrust_dir(void);
+float combat_lance_thrust_reach(void);
 
 static Rng urng = { 0xBADA55C0DEull };
 
@@ -421,6 +424,11 @@ void draw_play(void){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
         if (b->kind==11) continue;
+        if (b->kind==12){
+            float pulse=0.65f+0.25f*sinf(G.time*18.0f);
+            draw_ring(b->pos.x,b->pos.y,7.0f,COL(0x7CFCE4),pulse);
+            continue;
+        }
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -447,6 +455,15 @@ void draw_play(void){
         float sq = clampf(spd/300.0f,0,0.25f);
         float blink = (p->iframes>0 && fmodf(G.time,0.12f)<0.06f)?0.3f:1.0f;
         float bob = sinf(p->anim_t)*1.0f;
+        float lt=combat_lance_thrust_t();
+        if (lt>0){
+            v2 d=combat_lance_thrust_dir();
+            float reach=combat_lance_thrust_reach();
+            float fade=clampf(lt/0.16f,0,1);
+            float tipx=p->pos.x+d.x*reach, tipy=p->pos.y+d.y*reach;
+            draw_line(p->pos.x,p->pos.y,tipx,tipy,6.0f,COL(0x3FE0C5),0.35f*fade);
+            draw_line(p->pos.x,p->pos.y,tipx,tipy,2.0f,(col3){1.8f,2.2f,2.1f},fade);
+        }
         draw_sprite(SPR_FLAME,p->pos.x,p->pos.y+bob,14*(1.0f+sq),14*(1.0f-sq),(col3){1.6f,1.6f,1.6f},blink,p->aim.x<0,0);
         // 검 슬래시
         float st=combat_slash_t();
@@ -2910,14 +2927,96 @@ static void debug_fixture_modifiers(void){
     debug_invariant("glaive-burn-zone-expires-after-3s",0,burn_zone->active?1:0);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
-    G.pl.weapon.type=WPN_LANCE; G.pl.pos=fixture_pos;
-    G.pl.wrelics[0]=WR_LANCE_PIN; G.pl.wrelics[1]=WR_LANCE_PIERCE;
-    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),20.0f,20.0f,7.0f};
-    Bullet* lance=spawn_bullet(true,4,fixture_pos,V2(0,0),4.0f,1.0f,5.0f,999);
-    lance->bounces=3; lance->attack_group=95;
+    G.pl.weapon.type=WPN_LANCE; G.pl.pos=v2add(fixture_pos,V2(10000,0));
+    G.pl.wrelics[0]=WR_LANCE_BLAST; G.pl.wrelics[1]=-1;
+    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),50.0f,50.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),50.0f,50.0f,7.0f};
+    Bullet* lance=spawn_bullet(true,4,fixture_pos,V2(0,0),10.0f,1.0f,5.0f,999);
+    lance->attack_group=95;
     update_bullets(0);
-    debug_invariant("lance-pin-roots",1,G.ents[0].root>1.0f?1:0);
-    debug_invariant("lance-pierce-charges",1,lance->dmg>4.7f&&lance->bounces==2?1:0);
+    debug_invariant("lance-blast-monster-collision-stops-projectile",0,lance->active?1:0);
+    debug_invariant("lance-blast-damage-40-percent",46000,(int)lroundf(G.ents[1].hp*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_CHARGE; G.pl.wrelics[1]=-1;
+    G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.vel=V2(0,0); G.pl.iframes=0; G.pl.attack_cd=0;
+    G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(50,0)),V2(0,0),50.0f,50.0f,1.0f};
+    G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(75,0)),V2(0,0),50.0f,50.0f,1.0f};
+    float lance_base=player_attack_damage();
+    attack_held=true;
+    fire_weapon(0);
+    attack_held=false;
+    float lance_light=1.0f+clampf(1.0f-50.0f/player_light_radius(),0,1)*0.2f;
+    int lance_projectiles=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==4) lance_projectiles++;
+    debug_invariant("lance-charge-is-melee",0,lance_projectiles);
+    debug_invariant("lance-charge-range-double-pointer-blade",(int)lroundf((50.0f-lance_base*lance_light)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
+    debug_invariant("lance-charge-outside-range-safe",50000,(int)lroundf(G.ents[1].hp*1000.0f));
+    debug_invariant("lance-charge-forward-impulse-2-5x",750000,(int)lroundf(G.pl.vel.x*1000.0f));
+    debug_invariant("lance-charge-invulnerability-500ms",500,(int)lroundf(G.pl.iframes*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_PIN; G.pl.wrelics[1]=-1;
+    G.pl.pos=v2add(fixture_pos,V2(10000,0));
+    G.ents[0]=(Entity){true,E_BAT,fixture_pos,V2(0,0),50.0f,50.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),50.0f,50.0f,7.0f};
+    lance=spawn_bullet(true,4,fixture_pos,V2(0,0),10.0f,1.0f,5.0f,999);
+    lance->attack_group=96;
+    update_bullets(0);
+    int pin_events=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==12) pin_events++;
+    debug_invariant("lance-pin-stops-projectile",0,lance->active?1:0);
+    debug_invariant("lance-pin-roots-target-500ms",500,(int)lroundf(G.ents[0].root*1000.0f));
+    debug_invariant("lance-pin-delayed-event",1,pin_events);
+    update_bullets(0.5f);
+    debug_invariant("lance-pin-pulls-nearby-enemy",0,(int)lroundf(v2len(v2sub(G.ents[1].pos,fixture_pos))*1000.0f));
+    debug_invariant("lance-pin-area-damage-40-percent",46000,(int)lroundf(G.ents[1].hp*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_PIERCE; G.pl.wrelics[1]=-1;
+    G.pl.pos=v2add(fixture_pos,V2(10000,0));
+    for (int i=0;i<5;i++) G.ents[i]=(Entity){true,E_BAT,v2add(fixture_pos,V2((float)i*24.0f,0)),V2(0,0),50.0f,50.0f,1.0f};
+    lance=spawn_bullet(true,4,fixture_pos,V2(0,0),10.0f,1.0f,5.0f,999);
+    lance->attack_group=97;
+    for (int i=0;i<5;i++){ lance->pos=G.ents[i].pos; update_bullets(0); }
+    debug_invariant("lance-pierce-fifth-hit-damage-plus-20-each",29264,(int)lroundf(G.ents[4].hp*1000.0f));
+    debug_invariant("lance-pierce-unlimited-charge",24883,(int)lroundf(lance->dmg*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_CHARGE; G.pl.wrelics[1]=WR_LANCE_PIERCE;
+    G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.vel=V2(0,0); G.pl.iframes=0; G.pl.attack_cd=0;
+    for (int i=0;i<3;i++) G.ents[i]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20.0f+(float)i*20.0f,0)),V2(0,0),50.0f,50.0f,1.0f};
+    lance_base=player_attack_damage();
+    attack_held=true;
+    fire_weapon(0);
+    attack_held=false;
+    float charge_light=1.0f+clampf(1.0f-20.0f/player_light_radius(),0,1)*0.2f;
+    debug_invariant("lance-charge-pierce-scales-with-target-count",(int)lroundf((50.0f-lance_base*1.6f*charge_light)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_CHARGE; G.pl.wrelics[1]=WR_LANCE_BLAST;
+    G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.vel=V2(0,0); G.pl.iframes=0; G.pl.attack_cd=0;
+    G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(68,20)),V2(0,0),50.0f,50.0f,1.0f};
+    lance_base=player_attack_damage();
+    attack_held=true;
+    fire_weapon(0);
+    attack_held=false;
+    float blast_dist=v2len(v2sub(G.ents[0].pos,G.pl.pos));
+    float blast_light=1.0f+clampf(1.0f-blast_dist/player_light_radius(),0,1)*0.2f;
+    debug_invariant("lance-charge-blast-at-thrust-end",(int)lroundf((50.0f-lance_base*0.4f*blast_light)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_LANCE_CHARGE; G.pl.wrelics[1]=WR_LANCE_PIN;
+    G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.vel=V2(0,0); G.pl.iframes=0; G.pl.attack_cd=0;
+    G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),50.0f,50.0f,1.0f};
+    G.ents[1]=(Entity){true,E_BAT,v2add(fixture_pos,V2(50,0)),V2(0,0),50.0f,50.0f,1.0f};
+    attack_held=true;
+    fire_weapon(0);
+    attack_held=false;
+    pin_events=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==12) pin_events++;
+    debug_invariant("lance-charge-pin-applies-to-all-thrust-targets",2,pin_events);
+    debug_invariant("lance-charge-pin-roots-all",1,G.ents[0].root>=0.5f&&G.ents[1].root>=0.5f?1:0);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_WAND; G.pl.pos=fixture_pos;
@@ -3493,6 +3592,9 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==11) return "fire-trail-start";
     if (DBG_CFG.showcase_checkpoint==12) return "fire-trail-mid";
     if (DBG_CFG.showcase_checkpoint==13) return "fire-trail-end";
+    if (DBG_CFG.showcase_checkpoint==14) return "lance-thrust-start";
+    if (DBG_CFG.showcase_checkpoint==15) return "lance-thrust-mid";
+    if (DBG_CFG.showcase_checkpoint==16) return "lance-thrust-end";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3504,7 +3606,7 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
-        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=13)) return ST_PLAY;
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=16)) return ST_PLAY;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -3643,6 +3745,22 @@ static void debug_prepare_ui_showcase(void){
             G.ents[i+1].hp=G.ents[i+1].maxhp=100.0f;
             G.ents[i+1].spawn_t=0;
         }
+    } else if (DBG_CFG.showcase_checkpoint>=14 && DBG_CFG.showcase_checkpoint<=16) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.42f,G.room.h*TILE*0.55f);
+        G.pl.weapon.type=WPN_LANCE;
+        G.pl.wrelics[0]=WR_LANCE_CHARGE;
+        G.pl.wrelics[1]=WR_LANCE_BLAST;
+        G.pl.aim=V2(1,0);
+        G.room.cleared=true;
+        for (int i=0;i<3;i++){
+            spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(24.0f+(float)i*20.0f,0)));
+            G.ents[i].hp=G.ents[i].maxhp=100.0f;
+            G.ents[i].spawn_t=0;
+        }
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3667,6 +3785,13 @@ static void debug_showcase_tick(float dt){
             G.ents[i].vel=V2(0,0);
             G.ents[i].spawn_t=0;
         }
+        G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint>=14 && DBG_CFG.showcase_checkpoint<=16){
+        static const float thrust_time[3]={0.16f,0.10f,0.03f};
+        lance_thrust_t=thrust_time[DBG_CFG.showcase_checkpoint-14];
+        lance_thrust_dir=V2(1,0);
+        lance_thrust_reach=68.0f;
+        G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
     }
     dbg_showcase_frames++;

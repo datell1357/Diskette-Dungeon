@@ -12,6 +12,10 @@ extern bool mouse_present;
 static float slash_t = 0; static v2 slash_dir;
 float combat_slash_t(void){ return slash_t; }
 v2 combat_slash_dir(void){ return slash_dir; }
+static float lance_thrust_t = 0; static v2 lance_thrust_dir; static float lance_thrust_reach;
+float combat_lance_thrust_t(void){ return lance_thrust_t; }
+v2 combat_lance_thrust_dir(void){ return lance_thrust_dir; }
+float combat_lance_thrust_reach(void){ return lance_thrust_reach; }
 
 static Rng crng = { 0xFEEDFACE777ull };
 static bool phase_stepping;
@@ -368,6 +372,46 @@ static bool path_blocked_by_wall(v2 from, v2 to){
     return false;
 }
 
+static v2 lance_endpoint(v2 from,v2 dir,float reach){
+    v2 end=from;
+    for (float d=4.0f;d<=reach;d+=4.0f){
+        v2 next=v2add(from,v2scale(dir,d));
+        if (tile_solid((int)(next.x/TILE),(int)(next.y/TILE))) break;
+        end=next;
+    }
+    return end;
+}
+
+static void lance_explode(Bullet* b){
+    for (int j=0;j<MAX_ENTITIES;j++){
+        Entity* e=&G.ents[j];
+        if (!e->active||e->type==E_ECHO_GHOST) continue;
+        if (v2len(v2sub(e->pos,b->pos))<32.0f)
+            enemy_damage(e,b->dmg*0.4f,b->pos,b->burn,b->slow,false,true,b->attack_group);
+    }
+    burst(b->pos,16,COL(0xFF7A3D),150,0.5f,2.6f,true);
+    G.shake=fmaxf(G.shake,3.0f); sfx_play(SFX_SHOOT);
+}
+
+static void spawn_lance_pin(Bullet* source,int target){
+    Bullet* pin=spawn_bullet(true,12,source->pos,V2(0,0),source->dmg*0.4f,0.5f,40.0f,0);
+    if (!pin) return;
+    pin->last_hit=target;
+    pin->attack_group=source->attack_group;
+    pin->burn=source->burn; pin->slow=source->slow;
+}
+
+static void trigger_lance_pin(Bullet* pin){
+    for (int j=0;j<MAX_ENTITIES;j++){
+        Entity* e=&G.ents[j];
+        if (!e->active||e->type==E_ECHO_GHOST||j==pin->last_hit) continue;
+        if (v2len(v2sub(e->pos,pin->pos))>=pin->radius) continue;
+        e->pos=pin->pos; e->vel=V2(0,0);
+        enemy_damage(e,pin->dmg,pin->pos,pin->burn,pin->slow,false,true,pin->attack_group);
+    }
+    burst(pin->pos,12,COL(0x7CFCE4),110,0.4f,2.2f,true);
+}
+
 static void fire_weapon(float dt){
     Player* p=&G.pl;
     const WeaponDef* wd=&weapon_defs[p->weapon.type];
@@ -486,14 +530,47 @@ static void fire_weapon(float dt){
     } break;
     case WPN_LANCE: {
         sfx_play(SFX_SHOOT);
-        Bullet* b=spawn_bullet(true,4,p->pos,v2scale(p->aim,wd->speed),dmg,1.1f,5.0f,999);
-        if (b){ b->burn=burn;b->slow=slow;b->crit=crit; b->bounces=player_has_wrelic(WR_LANCE_PIERCE)?3:0; }
         G.shake=fmaxf(G.shake,1.5f);
-        if (player_has_wrelic(WR_LANCE_CHARGE)){ // 돌격: 앞으로 전진 + 짧은 무적
-            p->vel=v2add(p->vel,v2scale(p->aim,300.0f));
-            p->iframes=fmaxf(p->iframes,0.28f);
+        if (player_has_wrelic(WR_LANCE_CHARGE)){
+            const float reach=68.0f, half_width=3.0f;
+            v2 end=lance_endpoint(p->pos,p->aim,reach);
+            float actual_reach=v2len(v2sub(end,p->pos));
+            int targets[MAX_ENTITIES], count=0;
+            for (int i=0;i<MAX_ENTITIES;i++){
+                Entity* e=&G.ents[i];
+                if (!e->active||e->type==E_ECHO_GHOST) continue;
+                v2 offset=v2sub(e->pos,p->pos);
+                float forward=offset.x*p->aim.x+offset.y*p->aim.y;
+                float side=fabsf(offset.x*p->aim.y-offset.y*p->aim.x);
+                if (forward>=0&&forward<=actual_reach+e->radius&&side<=half_width+e->radius)
+                    targets[count++]=i;
+            }
+            float thrust_dmg=dmg;
+            if (player_has_wrelic(WR_LANCE_PIERCE)) thrust_dmg*=1.0f+0.2f*(float)count;
+            lance_thrust_t=0.16f; lance_thrust_dir=p->aim; lance_thrust_reach=actual_reach;
+            for (int n=0;n<count;n++){
+                Entity* e=&G.ents[targets[n]];
+                Bullet strike=(Bullet){.active=true,.from_player=true,.kind=4,.pos=e->pos,
+                    .dmg=thrust_dmg,.radius=half_width,.burn=burn,.slow=slow,.crit=crit,
+                    .attack_group=p->attack_group};
+                enemy_damage(e,thrust_dmg,p->pos,burn,slow,crit,true,p->attack_group);
+                if (player_has_wrelic(WR_LANCE_PIN)){
+                    e->root=fmaxf(e->root,0.5f); e->vel=V2(0,0);
+                    spawn_lance_pin(&strike,targets[n]);
+                }
+            }
+            if (player_has_wrelic(WR_LANCE_BLAST)){
+                Bullet strike=(Bullet){.active=true,.from_player=true,.kind=4,.pos=end,
+                    .dmg=thrust_dmg,.radius=half_width,.burn=burn,.slow=slow,.crit=crit,
+                    .attack_group=p->attack_group};
+                lance_explode(&strike);
+            }
+            p->vel=v2add(p->vel,v2scale(p->aim,750.0f));
+            p->iframes=fmaxf(p->iframes,0.5f);
             burst(p->pos,6,COL(0x3FE0C5),90,0.3f,2,true);
         } else {
+            Bullet* b=spawn_bullet(true,4,p->pos,v2scale(p->aim,wd->speed),dmg,1.1f,5.0f,999);
+            if (b){ b->burn=burn;b->slow=slow;b->crit=crit; }
             p->vel=v2add(p->vel,v2scale(p->aim,-60.0f));
         }
     } break;
@@ -1168,15 +1245,7 @@ static void bullet_death_fx(Bullet* b){
         }
         burst(b->pos,10,COL(0x7CFCE4),130,0.4f,2.2f,true);
     }
-    if (b->kind==4 && player_has_wrelic(WR_LANCE_BLAST)){ // 랜스 멈춘 지점 폭발
-        for (int j=0;j<MAX_ENTITIES;j++){
-            Entity* e=&G.ents[j];
-            if (!e->active||e->type==E_ECHO_GHOST) continue;
-            if (v2len(v2sub(e->pos,b->pos))<32.0f) enemy_damage(e,b->dmg*0.6f,b->pos,b->burn,b->slow,false,b->from_player,b->attack_group);
-        }
-        burst(b->pos,16,COL(0xFF7A3D),150,0.5f,2.6f,true);
-        G.shake=fmaxf(G.shake,3.0f); sfx_play(SFX_SHOOT);
-    }
+    if (b->kind==4 && player_has_wrelic(WR_LANCE_BLAST)) lance_explode(b);
 }
 
 static bool arm_delayed_fuse(Bullet* b){
@@ -1198,6 +1267,7 @@ static void update_bullets(float dt){
         b->life -= dt;
         if (b->life<=0){
             if (b->kind==3){ begin_glaive_return(b,p); b->life=3.0f; }
+            else if (b->kind==12){ trigger_lance_pin(b); b->active=false; continue; }
             else if (b->kind==10){
                 if (b->last_hit>=0 && b->last_hit<MAX_ENTITIES){
                     Entity* target=&G.ents[b->last_hit];
@@ -1210,7 +1280,7 @@ static void update_bullets(float dt){
             else if (arm_delayed_fuse(b)) continue;
             else { bullet_death_fx(b); b->active=false; continue; }
         }
-        if (b->kind==10) continue;
+        if (b->kind==10||b->kind==12) continue;
         if (b->kind==11){
             b->trail_t-=dt;
             if (b->trail_t<=0){
@@ -1309,12 +1379,13 @@ static void update_bullets(float dt){
                 float rr=e->radius+b->radius;
                 if (v2len(v2sub(e->pos,b->pos))<rr){
                     enemy_damage(e,b->dmg,b->pos,b->burn,b->slow,b->crit,b->from_player,b->attack_group);
-                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIN) &&
-                        e->type<E_BOSS_ROT){ e->root=fmaxf(e->root,1.2f); e->vel=V2(0,0); }
-                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIERCE) && b->bounces>0){
-                        b->dmg*=1.2f;
-                        b->bounces--;
+                    bool lance_stops=false;
+                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIN)){
+                        e->root=fmaxf(e->root,0.5f); e->vel=V2(0,0);
+                        spawn_lance_pin(b,j); lance_stops=true;
                     }
+                    if (b->kind==4 && player_has_wrelic(WR_LANCE_BLAST)) lance_stops=true;
+                    if (b->kind==4 && player_has_wrelic(WR_LANCE_PIERCE) && !lance_stops) b->dmg*=1.2f;
                     if (b->kind==5 && player_has_wrelic(WR_WAND_RING)){
                         for (int k=0;k<MAX_ENTITIES;k++){
                             Entity* other=&G.ents[k];
@@ -1343,6 +1414,7 @@ static void update_bullets(float dt){
                         }
                     }
                     b->last_hit=j; b->rehit_t=0.5f;
+                    if (lance_stops){ bullet_death_fx(b); b->active=false; break; }
                     if (arm_delayed_fuse(b)) break;
                     if (b->pierce>0){ b->pierce--; }
                     else { bullet_death_fx(b); b->active=false; }
@@ -1624,6 +1696,7 @@ void update_play(float dt){
     // --- 공격
     p->attack_cd-=dt;
     if (slash_t>0) slash_t-=dt;
+    if (lance_thrust_t>0) lance_thrust_t-=dt;
     fire_weapon(dt);
 
     // --- 글레이브 고착 페일세이프: 탄이 사라졌는데 깃발만 남으면 해제
