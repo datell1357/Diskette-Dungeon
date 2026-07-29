@@ -313,6 +313,14 @@ void draw_play(void){
         }
         draw_sprite(pickup_sprite(pk),pk->pos.x,pk->pos.y+bob,s,s,ptint,1,false,0);
     }
+    // 절단 궤적: 적과 플레이어 아래에 남는 2초 화상지대
+    for (int i=0;i<MAX_BULLETS;i++){
+        Bullet* b=&G.bullets[i];
+        if (!b->active || b->kind!=11) continue;
+        float a=clampf(b->life/2.0f,0,1);
+        draw_quad(b->pos.x-b->radius,b->pos.y-b->radius,b->radius*2,b->radius*2,COL(0xFF7A3D),0.10f+0.10f*a);
+        draw_ring(b->pos.x,b->pos.y,b->radius,COL(0xFFB05A),0.28f+0.22f*a);
+    }
     // 적
     for (int i=0;i<MAX_ENTITIES;i++){
         Entity* e=&G.ents[i];
@@ -383,6 +391,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
+        if (b->kind==11) continue;
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -451,6 +460,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
+        if (b->kind==11) continue;
         col3 c=b->from_player?COL(0x3FE0C5):COL(0xFF3D7F);
         draw_light_blob(b->pos.x,b->pos.y,b->radius*5.0f,c,0.5f);
     }
@@ -495,6 +505,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
+        if (b->kind==11) continue;
         col3 c=b->from_player?COL(0x7CFCE4):COL(0xFF3D7F);
         draw_glow_blob(b->pos.x,b->pos.y,b->radius*3.0f,c,0.55f);
     }
@@ -2782,14 +2793,48 @@ static void debug_fixture_modifiers(void){
     debug_invariant("spray-pierce-one-target-each",4,spray_pierce);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_GLAIVE; G.pl.pos=fixture_pos; G.pl.aim=V2(1,0); G.pl.attack_cd=0; G.pl.glaive_out=false;
+    G.pl.wrelics[0]=WR_GLAIVE_ORBIT; G.pl.wrelics[1]=-1;
+    attack_held=true; fire_weapon(0); attack_held=false;
+    int orbit_forward=0;
+    for (int i=0;i<MAX_BULLETS;i++)
+        if (G.bullets[i].active&&G.bullets[i].kind==3&&G.bullets[i].vel.x>0) orbit_forward++;
+    debug_invariant("glaive-orbit-double-throw",2,orbit_forward);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.attack_cd=0; G.pl.glaive_out=false; G.pl.wrelics[1]=WR_GLAIVE_TWIN;
+    attack_held=true; fire_weapon(0); attack_held=false;
+    int orbit_twin_forward=0, orbit_twin_back=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==3){
+        if (G.bullets[i].vel.x>0) orbit_twin_forward++;
+        else if (G.bullets[i].vel.x<0) orbit_twin_back++;
+    }
+    debug_invariant("glaive-orbit-twin-forward-count",2,orbit_twin_forward);
+    debug_invariant("glaive-orbit-twin-back-count",2,orbit_twin_back);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.pos=V2(88,88); G.pl.wrelics[0]=WR_GLAIVE_RETURN; G.pl.wrelics[1]=-1;
+    uint8_t saved_glaive_wall=G.room.tiles[5][6];
+    G.room.tiles[5][6]=T_WALL;
+    Bullet* wall_glaive=spawn_bullet(true,3,G.pl.pos,V2(260,0),4.0f,2.0f,7.0f,999);
+    update_bullets(0.1f);
+    debug_invariant("glaive-wall-starts-return",1,wall_glaive->active&&wall_glaive->returning?1:0);
+    G.room.tiles[5][6]=saved_glaive_wall;
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_GLAIVE; G.pl.pos=fixture_pos;
     G.pl.wrelics[0]=WR_GLAIVE_RETURN; G.pl.wrelics[1]=WR_GLAIVE_TRAIL;
     G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(140,0)),V2(0,0),20.0f,20.0f,7.0f};
     Bullet* glaive=spawn_bullet(true,3,G.ents[0].pos,V2(0,0),4.0f,2.0f,7.0f,999);
     glaive->attack_group=94;
-    update_bullets(0.01f);
-    debug_invariant("glaive-return-accelerates",1,glaive->returning&&glaive->dmg>4.9f?1:0);
-    debug_invariant("glaive-trail-damages",1,G.ents[0].hp<20.0f?1:0);
+    update_bullets(0);
+    int burn_zones=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11) burn_zones++;
+    debug_invariant("glaive-return-damage-plus-40",5600,(int)lroundf(glaive->dmg*1000.0f));
+    debug_invariant("glaive-return-speed-plus-30",4394,(int)lroundf(-glaive->vel.x*10.0f));
+    debug_invariant("glaive-trail-creates-burn-zone",1,burn_zones);
+    glaive->active=false;
+    G.ents[0].hp=20.0f;
+    update_bullets(1.0f);
+    debug_invariant("glaive-burn-zone-half-damage",(int)lroundf((20.0f-player_attack_damage()*0.5f)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_LANCE; G.pl.pos=fixture_pos;

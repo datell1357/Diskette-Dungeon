@@ -110,6 +110,24 @@ static Bullet* spawn_bullet(bool from_player,int kind,v2 pos,v2 vel,float dmg,fl
     return NULL;
 }
 
+static void begin_glaive_return(Bullet* b, Player* p){
+    if (b->returning) return;
+    b->returning=true;
+    float return_speed=weapon_defs[WPN_GLAIVE].speed*1.3f;
+    if (b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)){
+        return_speed*=1.3f;
+        b->dmg*=1.4f;
+    }
+    b->vel=v2scale(v2norm(v2sub(p->pos,b->pos)),return_speed);
+}
+
+static void spawn_glaive_burn_zone(v2 pos, uint32_t attack_group){
+    Bullet* zone=spawn_bullet(true,11,pos,V2(0,0),player_attack_damage()*0.5f,2.0f,18.0f,0);
+    if (!zone) return;
+    zone->trail_t=1.0f;
+    zone->attack_group=attack_group;
+}
+
 static int random_unowned_wrelic(int excluded){
     int choices[WR_COUNT], count=0;
     for (int i=0;i<WR_COUNT;i++)
@@ -444,14 +462,19 @@ static void fire_weapon(float dt){
     } break;
     case WPN_GLAIVE: {
         if (p->glaive_out){ p->attack_cd=0; break; }
-        bool orbit = player_has_wrelic(WR_GLAIVE_ORBIT);
-        float glife = orbit? 4.5f : 3.0f;
-        Bullet* b=spawn_bullet(true,3,p->pos,v2scale(p->aim,wd->speed),dmg,glife,7.0f,999);
-        if (b){ b->burn=burn;b->slow=slow;b->crit=crit; p->glaive_out=true; sfx_play(SFX_SHOOT); }
-        if (b && player_has_wrelic(WR_GLAIVE_TWIN)){ // 반대 방향으로 한 자루 더
-            Bullet* b2=spawn_bullet(true,3,p->pos,v2scale(p->aim,-wd->speed),dmg,glife,7.0f,999);
-            if (b2){ b2->burn=burn;b2->slow=slow;b2->crit=crit; }
+        int per_direction=player_has_wrelic(WR_GLAIVE_ORBIT)?2:1;
+        int directions=player_has_wrelic(WR_GLAIVE_TWIN)?2:1;
+        bool launched=false;
+        for (int direction=0;direction<directions;direction++){
+            v2 aim=direction==0?p->aim:v2scale(p->aim,-1.0f);
+            for (int n=0;n<per_direction;n++){
+                Bullet* b=spawn_bullet(true,3,p->pos,v2scale(aim,wd->speed),dmg,3.0f,7.0f,999);
+                if (!b) continue;
+                b->burn=burn; b->slow=slow; b->crit=crit;
+                launched=true;
+            }
         }
+        if (launched){ p->glaive_out=true; sfx_play(SFX_SHOOT); }
     } break;
     case WPN_LANCE: {
         sfx_play(SFX_SHOOT);
@@ -1166,7 +1189,7 @@ static void update_bullets(float dt){
         if (!b->active) continue;
         b->life -= dt;
         if (b->life<=0){
-            if (b->kind==3){ b->returning=true; b->life=3.0f; }
+            if (b->kind==3){ begin_glaive_return(b,p); b->life=3.0f; }
             else if (b->kind==10){
                 if (b->last_hit>=0 && b->last_hit<MAX_ENTITIES){
                     Entity* target=&G.ents[b->last_hit];
@@ -1180,6 +1203,19 @@ static void update_bullets(float dt){
             else { bullet_death_fx(b); b->active=false; continue; }
         }
         if (b->kind==10) continue;
+        if (b->kind==11){
+            b->trail_t-=dt;
+            if (b->trail_t<=0){
+                for (int j=0;j<MAX_ENTITIES;j++){
+                    Entity* e=&G.ents[j];
+                    if (!e->active||e->type==E_ECHO_GHOST) continue;
+                    if (v2len(v2sub(e->pos,b->pos))<e->radius+b->radius)
+                        enemy_damage(e,b->dmg,b->pos,0,0,false,true,b->attack_group);
+                }
+                b->trail_t+=1.0f;
+            }
+            continue;
+        }
         // 유도
         if (b->kind==5 && b->from_player){
             float best=1e9f; Entity* tgt=NULL;
@@ -1202,13 +1238,10 @@ static void update_bullets(float dt){
         // 글레이브 귀환
         if (b->kind==3){
             float d=v2len(v2sub(b->pos,p->pos));
-            float outd = (b->from_player && player_has_wrelic(WR_GLAIVE_ORBIT))? 215.0f : 130.0f;
-            if (!b->returning && d>outd){
-                b->returning=true;
-                if (b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)) b->dmg*=1.25f;
-            }
+            if (!b->returning && d>130.0f) begin_glaive_return(b,p);
             if (b->returning){
-                float return_speed=weapon_defs[WPN_GLAIVE].speed*(b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)?1.625f:1.3f);
+                float return_speed=weapon_defs[WPN_GLAIVE].speed*1.3f;
+                if (b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)) return_speed*=1.3f;
                 v2 want=v2scale(v2norm(v2sub(p->pos,b->pos)),return_speed);
                 b->vel=v2add(b->vel,v2scale(v2sub(want,b->vel),8.0f*dt));
                 // glaive_out 해제는 update_play 페일세이프가 담당 (쌍날: 둘 다 복귀해야 재발사)
@@ -1217,20 +1250,15 @@ static void update_bullets(float dt){
         }
         v2 previous_pos=b->pos;
         b->pos = v2add(b->pos,v2scale(b->vel,dt));
-        if (b->kind==3 && b->from_player && player_has_wrelic(WR_GLAIVE_TRAIL)){
-            b->trail_t-=dt;
-            if (b->trail_t<=0){
-                for (int j=0;j<MAX_ENTITIES;j++){
-                    Entity* e=&G.ents[j];
-                    if (!e->active||e->type==E_ECHO_GHOST) continue;
-                    if (v2len(v2sub(e->pos,b->pos))<18.0f)
-                        enemy_damage(e,b->dmg*0.3f,b->pos,b->burn,b->slow,false,true,b->attack_group);
-                }
-                b->trail_t=0.18f;
-            }
-        }
         // 벽
         bool wave_hit_wall=b->kind==8 && path_blocked_by_wall(previous_pos,b->pos);
+        bool glaive_hit_wall=b->kind==3 &&
+            (path_blocked_by_wall(previous_pos,b->pos) || tile_solid((int)(b->pos.x/TILE),(int)(b->pos.y/TILE)));
+        if (glaive_hit_wall){
+            b->pos=previous_pos;
+            begin_glaive_return(b,p);
+            continue;
+        }
         if (b->kind!=3 && (wave_hit_wall || tile_solid((int)(b->pos.x/TILE),(int)(b->pos.y/TILE)))){
             if (b->kind==2 && b->from_player && b->bounces>0){ // 도탄: 막힌 축만 반사
                 b->pos = v2sub(b->pos,v2scale(b->vel,dt)); // 충돌 직전으로 복귀
@@ -1248,8 +1276,20 @@ static void update_bullets(float dt){
             bullet_death_fx(b); b->active=false; continue;
         }
         if (b->pos.x<0||b->pos.y<0||b->pos.x>G.room.w*TILE||b->pos.y>G.room.h*TILE){
+            if (b->kind==3){
+                b->pos=previous_pos;
+                begin_glaive_return(b,p);
+                continue;
+            }
             if (arm_delayed_fuse(b)) continue;
             bullet_death_fx(b); b->active=false; continue;
+        }
+        if (b->kind==3 && b->from_player && player_has_wrelic(WR_GLAIVE_TRAIL)){
+            b->trail_t-=dt;
+            if (b->trail_t<=0){
+                spawn_glaive_burn_zone(b->pos,b->attack_group);
+                b->trail_t+=0.18f;
+            }
         }
         // 명중
         if (b->from_player){
