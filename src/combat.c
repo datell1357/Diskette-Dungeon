@@ -18,8 +18,16 @@ v2 combat_lance_thrust_dir(void){ return lance_thrust_dir; }
 float combat_lance_thrust_reach(void){ return lance_thrust_reach; }
 
 static Rng crng = { 0xFEEDFACE777ull };
-static bool phase_stepping;
 static bool execution_burst;
+typedef struct {
+    bool active, full;
+    int hits_left;
+    float timer, damage, burn, slow;
+    bool crit;
+    uint32_t attack_group;
+    v2 origin;
+} PhaseAttack;
+static PhaseAttack phase_attack;
 
 // ----------------------------------------------------------- 무게 변화 → 스탯 피드백
 // 픽업/드롭으로 무게가 바뀌면 화면 고정 안내로 공격/이속/빛 변화를 띄운다.
@@ -77,6 +85,27 @@ void spawn_enemy(int type, v2 pos){
         e->maxhp=e->hp;
         return;
     }
+}
+
+bool training_try_summon(void){
+    const v2 button=V2(VIRT_W*(2.0f/3.0f),88.0f);
+    if (!G.training_active || v2len(v2sub(G.pl.pos,button))>24.0f) return false;
+    if (G.training_summon_cd>0){ sfx_play(SFX_DENY); return true; }
+    int slot=-1;
+    for (int i=1;i<MAX_ENTITIES;i++) if (!G.ents[i].active){ slot=i; break; }
+    if (slot<0){ sfx_play(SFX_DENY); return true; }
+    static const int flying_types[3]={E_BAT,E_WRAITH,E_DRONE};
+    v2 pos=V2(rng_range(&crng,40.0f,VIRT_W-40.0f),rng_range(&crng,44.0f,132.0f));
+    spawn_enemy(flying_types[rng_i(&crng,3)],pos);
+    Entity* e=&G.ents[slot];
+    e->training_passive=true;
+    e->target=V2(rng_range(&crng,32.0f,VIRT_W-32.0f),rng_range(&crng,40.0f,136.0f));
+    e->t0=rng_range(&crng,1.2f,2.4f);
+    e->spawn_t=0;
+    G.training_summon_cd=1.0f;
+    add_floater(button,"몬스터 1기 소환",COL(0x9FFFF0));
+    sfx_play(SFX_UI);
+    return true;
 }
 
 void spawn_boss(int biome){
@@ -284,35 +313,66 @@ static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool 
         if (execute){
             G.pl.hp=fminf((float)G.pl.maxhp,G.pl.hp+0.25f);
             execution_burst=true;
+            float burst_damage=player_attack_damage()*(player_has_wrelic(WR_SWORD_WAVE)?0.6f:1.2f);
             for (int i=0;i<MAX_ENTITIES;i++){
                 Entity* other=&G.ents[i];
                 if (!other->active || other==e || other->type==E_ECHO_GHOST) continue;
                 if (v2len(v2sub(other->pos,death_pos))<40.0f)
-                    enemy_damage(other,player_attack_damage()*0.5f,death_pos,burn,slow,false,true,attack_group);
+                    enemy_damage(other,burst_damage,death_pos,burn,slow,false,true,attack_group);
             }
             execution_burst=false;
+            if (player_has_wrelic(WR_SWORD_WAVE)){
+                float fragment_damage=player_attack_damage()*1.2f*0.3f;
+                for (int k=0;k<8;k++){
+                    float angle=(float)k*0.7853982f;
+                    Bullet* fragment=spawn_bullet(true,8,death_pos,V2(cosf(angle)*360.0f,sinf(angle)*360.0f),
+                                                  fragment_damage,0.75f,4.0f,0);
+                    if (fragment){ fragment->burn=burn; fragment->slow=slow; fragment->attack_group=attack_group; }
+                }
+            }
         }
         enemy_finalize_death(e,DEATH_REASON_DAMAGE);
-        if (from_player && !phase_stepping && G.pl.weapon.type==WPN_SWORD &&
-            player_has_wrelic(WR_SWORD_PHASE)){
-            Entity* target=NULL;
-            float best=180.0f;
-            for (int i=0;i<MAX_ENTITIES;i++){
-                Entity* other=&G.ents[i];
-                if (!other->active || other->type==E_ECHO_GHOST) continue;
-                float dist=v2len(v2sub(other->pos,death_pos));
-                if (dist<best){ best=dist; target=other; }
-            }
-            if (target){
-                G.pl.pos=target->pos;
-                G.pl.vel=V2(0,0);
-                G.pl.iframes=fmaxf(G.pl.iframes,0.25f);
-                phase_stepping=true;
-                enemy_damage(target,player_attack_damage()*2.0f,G.pl.pos,burn,slow,crit,true,attack_group);
-                phase_stepping=false;
-            }
-        }
     }
+}
+
+static void update_phase_attack(float dt){
+    if (!phase_attack.active) return;
+    phase_attack.timer-=dt;
+    if (phase_attack.timer>0) return;
+    int targets[MAX_ENTITIES], count=0;
+    for (int i=0;i<MAX_ENTITIES;i++){
+        Entity* e=&G.ents[i];
+        if (!e->active || e->type==E_ECHO_GHOST) continue;
+        if (v2len(v2sub(e->pos,phase_attack.origin))<=80.0f+e->radius) targets[count++]=i;
+    }
+    if (count==0 || phase_attack.hits_left<=0){ phase_attack.active=false; return; }
+    Entity* target=&G.ents[targets[rng_i(&crng,count)]];
+    v2 from=G.pl.pos;
+    v2 hit_pos=target->pos;
+    if (count==1){
+        float angle=rng_f(&crng)*6.2831853f;
+        G.pl.pos=v2add(hit_pos,V2(cosf(angle)*18.0f,sinf(angle)*18.0f));
+        G.pl.pos=push_out_of_walls(G.pl.pos,5.0f);
+    } else G.pl.pos=hit_pos;
+    G.pl.vel=V2(0,0);
+    G.pl.iframes=fmaxf(G.pl.iframes,0.2f);
+    burst(from,5,COL(0x7CFCE4),90,0.25f,1.8f,true);
+    burst(hit_pos,8,COL(0x9FFFF0),120,0.3f,2.0f,true);
+    enemy_damage(target,phase_attack.damage,from,phase_attack.burn,phase_attack.slow,
+                 phase_attack.crit,true,phase_attack.attack_group);
+    if (phase_attack.full && player_has_wrelic(WR_SWORD_WHIRL)){
+        for (int i=0;i<MAX_ENTITIES;i++){
+            Entity* other=&G.ents[i];
+            if (!other->active || other->type==E_ECHO_GHOST) continue;
+            if (v2len(v2sub(other->pos,hit_pos))<=12.0f+other->radius)
+                enemy_damage(other,player_attack_damage()*0.3f,hit_pos,phase_attack.burn,
+                             phase_attack.slow,false,true,phase_attack.attack_group);
+        }
+        burst(hit_pos,5,COL(0x3FE0C5),75,0.24f,1.5f,true);
+    }
+    phase_attack.hits_left--;
+    phase_attack.timer=0.2f;
+    if (phase_attack.hits_left<=0) phase_attack.active=false;
 }
 
 #ifdef DD_DEBUG
@@ -460,18 +520,89 @@ static CannonRailCast fire_cannon_rail_segment(v2 origin,v2 dir,float damage,flo
     return cast;
 }
 
+static void perform_sword_attack(float dmg,float burn,float slow,bool crit,uint32_t attack_group){
+    Player* p=&G.pl;
+    bool whirl=player_has_wrelic(WR_SWORD_WHIRL);
+    bool wave=player_has_wrelic(WR_SWORD_WAVE);
+    float reach=whirl?40.0f:34.0f;
+    slash_t=0.14f; slash_dir=p->aim;
+    sfx_play(SFX_SHOOT);
+    for (int i=0;i<MAX_ENTITIES;i++){
+        Entity* e=&G.ents[i];
+        if (!e->active) continue;
+        v2 d=v2sub(e->pos,p->pos);
+        float dist=v2len(d);
+        if (e->spawn_t>0) e->spawn_t=0;
+        if (dist<reach+e->radius){
+            v2 nd=v2norm(d);
+            if ((whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f) &&
+                !path_blocked_by_wall(p->pos,e->pos))
+                enemy_damage(e,dmg,p->pos,burn,slow,crit,true,attack_group);
+        }
+    }
+    if (whirl) for (int i=0;i<MAX_BULLETS;i++){
+        Bullet* b=&G.bullets[i];
+        if (!b->active||b->from_player) continue;
+        if (v2len(v2sub(b->pos,p->pos))<38.0f){
+            b->active=false; burst(b->pos,3,COL(0x9FFFF0),60,0.3f,1.5f,true);
+        }
+    }
+    if (!wave) return;
+    int count=whirl?8:1;
+    float base=whirl?0.0f:atan2f(p->aim.y,p->aim.x);
+    for (int k=0;k<count;k++){
+        float angle=whirl?(float)k*0.7853982f:base;
+        Bullet* b=spawn_bullet(true,8,p->pos,V2(cosf(angle)*360.0f,sinf(angle)*360.0f),dmg,1.25f,7.0f,999);
+        if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->attack_group=attack_group; }
+    }
+}
+
 static void fire_weapon(float dt){
     Player* p=&G.pl;
     const WeaponDef* wd=&weapon_defs[p->weapon.type];
     float cd_mul = p->relics[RELIC_OVERCLOCK]?0.7f:1.0f;
-    if (p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_WAVE)) cd_mul*=1.3f; // 검기: 공속 -30%
+    bool sword_wave=p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_WAVE);
+    bool sword_whirl=p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_WHIRL);
+    if (sword_wave) cd_mul*=1.5f;
     const float kinship_cd_mul =
         1.0f-0.04f*fminf((float)G.memory.kept[MEM_TAG_KINSHIP],2.0f);
     float dmg = player_attack_damage();
     float burn = p->weapon.prefix==PFX_HOT? 3.0f:0.0f;
     float slow = p->weapon.prefix==PFX_COLD? 2.0f:0.0f;
     bool crit = p->weapon.prefix==PFX_BROKEN && rng_i(&crng,10)<3;
+    if (sword_wave && !sword_whirl) dmg*=1.2f;
     if (crit) dmg*=2.0f;
+
+    if (p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_PHASE)){
+        if (phase_attack.active) return;
+        if (attack_held){
+            p->charging=true;
+            p->charge=clampf(p->charge+dt/3.0f,0,1);
+            return;
+        }
+        if (p->charging){
+            p->charging=false;
+            if (p->attack_cd<=0){
+                p->attack_group++;
+                phase_attack=(PhaseAttack){
+                    .active=true,
+                    .full=p->charge+0.00001f>=1.0f,
+                    .hits_left=sword_phase_charge_hits(p->charge),
+                    .damage=dmg*2.0f,
+                    .burn=burn,
+                    .slow=slow,
+                    .crit=crit,
+                    .attack_group=p->attack_group,
+                    .origin=p->pos
+                };
+                p->attack_cd=wd->cooldown*cd_mul*kinship_cd_mul;
+                update_phase_attack(0);
+                sfx_play(SFX_SHOOT);
+            }
+            p->charge=0;
+        }
+        return;
+    }
 
     // 비트 캐논: 차징
     if (p->weapon.type==WPN_CANNON){
@@ -563,35 +694,7 @@ static void fire_weapon(float dt){
 
     switch (p->weapon.type){
     case WPN_SWORD: {
-        slash_t = 0.14f; slash_dir = p->aim;
-        sfx_play(SFX_SHOOT);
-        bool whirl = player_has_wrelic(WR_SWORD_WHIRL); // 전방향 베기
-        float reach = whirl? 40.0f : 34.0f;
-        for (int i=0;i<MAX_ENTITIES;i++){
-            Entity* e=&G.ents[i];
-            if (!e->active) continue;
-            v2 d=v2sub(e->pos,p->pos);
-            float dist=v2len(d);
-            if (e->spawn_t>0) e->spawn_t=0; // 맞으면 즉시 등장 완료 취급
-            if (dist<reach+e->radius){
-                v2 nd=v2norm(d);
-                if ((whirl || nd.x*p->aim.x+nd.y*p->aim.y>0.35f) &&
-                    !path_blocked_by_wall(p->pos,e->pos))
-                    enemy_damage(e,dmg,p->pos,burn,slow,crit,true,p->attack_group);
-            }
-        }
-        if (whirl) for (int i=0;i<MAX_BULLETS;i++){
-            Bullet* b=&G.bullets[i];
-            if (!b->active||b->from_player) continue;
-            if (v2len(v2sub(b->pos,p->pos))<38.0f){
-                b->active=false; burst(b->pos,3,COL(0x9FFFF0),60,0.3f,1.5f,true);
-            }
-        }
-        // 검기: 관통하며 사거리 끝까지 날아가는 칼날 (벽에 닿으면 소멸)
-        if (player_has_wrelic(WR_SWORD_WAVE)){
-            Bullet* b=spawn_bullet(true,8,p->pos,v2scale(p->aim,360.0f),dmg,1.25f,7.0f,999);
-            if (b){ b->burn=burn; b->slow=slow; b->crit=crit; }
-        }
+        perform_sword_attack(dmg,burn,slow,crit,p->attack_group);
     } break;
     case WPN_SPRAY: {
         sfx_play(SFX_SHOOT);
@@ -1761,11 +1864,14 @@ static void update_enemy_feedback(float dt){
 
 void update_play(float dt){
     Player* p=&G.pl;
+    if (phase_attack.active && (p->weapon.type!=WPN_SWORD || !player_has_wrelic(WR_SWORD_PHASE)))
+        phase_attack.active=false;
     update_enemy_feedback(dt);
     if (!G.training_active) clear_reward_label_obstacles();
     player_sync_light_shield();
     G.run_time += dt;
     G.room_t += dt;
+    if (G.training_summon_cd>0) G.training_summon_cd-=dt;
 
     // --- 이동
     v2 mv=V2(0,0);
@@ -1774,6 +1880,7 @@ void update_play(float dt){
     if (key_held[SAPP_KEYCODE_A]||key_held[SAPP_KEYCODE_LEFT]) mv.x-=1;
     if (key_held[SAPP_KEYCODE_D]||key_held[SAPP_KEYCODE_RIGHT]) mv.x+=1;
     mv=v2norm(mv);
+    if (phase_attack.active){ mv=V2(0,0); p->dash_t=0; }
     p->moving = (mv.x!=0||mv.y!=0);
     float speed = 95.0f*player_speed_mul();
 
@@ -1813,6 +1920,7 @@ void update_play(float dt){
     if (slash_t>0) slash_t-=dt;
     if (lance_thrust_t>0) lance_thrust_t-=dt;
     fire_weapon(dt);
+    update_phase_attack(dt);
 
     // --- 글레이브 고착 페일세이프: 탄이 사라졌는데 깃발만 남으면 해제
     if (p->glaive_out){
@@ -1858,6 +1966,19 @@ void update_play(float dt){
         if (G.training_active && i==0){
             if (e->flash>0) e->flash-=dt;
             e->vel=V2(0,0);
+            continue;
+        }
+        if (G.training_active && e->training_passive){
+            if (e->flash>0) e->flash-=dt;
+            if (e->player_damage_t>0) e->player_damage_t-=dt;
+            e->t0-=dt;
+            if (e->t0<=0 || v2len(v2sub(e->target,e->pos))<8.0f){
+                e->target=V2(rng_range(&crng,32.0f,VIRT_W-32.0f),rng_range(&crng,40.0f,136.0f));
+                e->t0=rng_range(&crng,1.2f,2.4f);
+            }
+            v2 want=v2scale(v2norm(v2sub(e->target,e->pos)),42.0f);
+            e->vel=v2add(e->vel,v2scale(v2sub(want,e->vel),3.0f*dt));
+            e->pos=resolve_collision(e->pos,e->vel,e->radius,dt);
             continue;
         }
         // 벽 속에 갇힌 적은 가까운 바닥으로 구출 (방 클리어 불가 방지)

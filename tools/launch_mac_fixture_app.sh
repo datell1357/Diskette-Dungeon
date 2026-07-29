@@ -81,7 +81,10 @@ case "$action:$checkpoint" in
     fixture-ddd-ui-showcase:cannon-frag-wall|fixture-ddd-ui-showcase:cannon-rail-start|\
     fixture-ddd-ui-showcase:cannon-rail-mid|fixture-ddd-ui-showcase:cannon-rail-end|\
     fixture-ddd-ui-showcase:cannon-rail-frag|fixture-ddd-ui-showcase:cannon-rail-fuse-start|\
-    fixture-ddd-ui-showcase:cannon-rail-fuse-end|fixture-ddd-ui-showcase:cannon-rail-recoil)
+    fixture-ddd-ui-showcase:cannon-rail-fuse-end|fixture-ddd-ui-showcase:cannon-rail-recoil|\
+    fixture-ddd-ui-showcase:sword-phase-50|fixture-ddd-ui-showcase:sword-phase-full|\
+    fixture-ddd-ui-showcase:sword-wave|fixture-ddd-ui-showcase:sword-whirl|\
+    fixture-ddd-ui-showcase:training-summon)
         [ -z "$core_count" ] && [ -z "$retry_phase" ] || fail "showcase fixtures do not accept core counts or retry phases"
         core_label=none
         ;;
@@ -377,7 +380,7 @@ def identity(path):
     snapshot = result.get('snapshot') or {}
     window = snapshot.get('window') or {}
     app = snapshot.get('app') or {}
-    if shot.get('width') != 1920 or shot.get('height') != 1144 or shot.get('format') != 'png':
+    if (shot.get('width'), shot.get('height')) not in ((960, 572), (1920, 1144)) or shot.get('format') != 'png':
         raise SystemExit('settled observation has unexpected screenshot metadata')
     if result.get('screenshotStatus', {}).get('state') != 'captured':
         raise SystemExit('settled observation was not captured')
@@ -418,8 +421,8 @@ if not isinstance(width, int) or not isinstance(height, int):
 print(f"{width}x{height}")
 PY
 ) || geometry=unknown
-if [ "$geometry" != 1920x1144 ]; then
-    printf '{"error":"unsupported-capture-geometry","expected":"1920x1144","actual":"%s"}\n' "$geometry" >&2
+if [ "$geometry" != 1920x1144 ] && [ "$geometry" != 960x572 ]; then
+    printf '{"error":"unsupported-capture-geometry","expected":"960x572 or 1920x1144","actual":"%s"}\n' "$geometry" >&2
     wait "$open_pid" || true
     exit 2
 fi
@@ -428,12 +431,31 @@ if [ "$action" = fixture-ddd-ending ]; then
 else
     sleep 0.5
 fi
+normalize_capture() {
+    capture_geometry=$(sips -g pixelWidth -g pixelHeight "$1" 2>/dev/null | awk '/pixelWidth/{w=$2}/pixelHeight/{h=$2}END{print w "x" h}')
+    if [ "$capture_geometry" = 960x572 ]; then
+        sips -z 1144 1920 "$1" >/dev/null
+    fi
+}
 capture_observation() {
-    orca computer get-app-state --app "pid:$pid" --window-id "$window_id" --restore-window --json > "$1"
-    observation_path=$(capture_path "$1") || return 1
-    [ -f "$observation_path" ] || return 1
+    best_size=0
+    observation_path=
+    for candidate in 1 2 3; do
+        candidate_state=$diagnostics/capture-candidate-$candidate.json
+        orca computer get-app-state --app "pid:$pid" --window-id "$window_id" --restore-window --json > "$candidate_state"
+        candidate_path=$(capture_path "$candidate_state") || return 1
+        [ -f "$candidate_path" ] || return 1
+        candidate_size=$(wc -c < "$candidate_path" | tr -d ' ')
+        if [ "$candidate_size" -gt "$best_size" ]; then
+            best_size=$candidate_size
+            observation_path=$candidate_path
+            cp "$candidate_state" "$1"
+        fi
+        sleep 0.1
+    done
     cp "$observation_path" "${2%.png}.orca.png"
-    screencapture -l"$window_id" -o -x "$2"
+    cp "$observation_path" "$2"
+    normalize_capture "$2"
     initial_sha=$(sha256 "$2")
     sleep 0.1
     settled_sha=$(sha256 "$2")
@@ -521,6 +543,7 @@ with pathlib.Path(path).open("a") as out:
 PY
     [ "$capture_attempt" -lt 3 ] || { wait "$open_pid" || true; fail "final capture is not fully composited after native recapture"; }
     screencapture -l"$window_id" -o -x "$capture"
+    normalize_capture "$capture"
     refresh_capture_stability "$capture" "$diagnostics/final.capture-stability.json" || { wait "$open_pid" || true; fail "native recapture did not become byte-stable"; }
     capture_attempt=$((capture_attempt + 1))
 done

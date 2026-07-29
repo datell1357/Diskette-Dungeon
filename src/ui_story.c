@@ -292,6 +292,14 @@ void draw_play(void){
             if (G.pickups[i].active && (G.pickups[i].type==PK_WEAPON ||
                 G.pickups[i].type==PK_RELIC || G.pickups[i].type==PK_WRELIC))
                 draw_reward_effect_label(&G.pickups[i]);
+    if (G.training_active){
+        v2 button=V2(VIRT_W*(2.0f/3.0f),88.0f);
+        bool nearby=v2len(v2sub(G.pl.pos,button))<=24.0f;
+        float ready=G.training_summon_cd<=0?1.0f:clampf(1.0f-G.training_summon_cd,0.0f,1.0f);
+        draw_quad(button.x-11,button.y-6,22,12,nearby?COL(0x284C54):COL(0x171425),0.94f);
+        draw_quad(button.x-9,button.y+4,18*ready,1,COL(0x3FE0C5),0.9f);
+        draw_text_center("E",button.x,button.y-4,0.32f,COL(0x9FFFF0),1);
+    }
     // 픽업
     // 기억 이벤트 — 방 클리어 뒤 배드 섹터에 남은 조각
     if (r->event_state==MEM_STATE_AVAILABLE){
@@ -454,10 +462,17 @@ void draw_play(void){
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
             draw_sprite(SPR_GLAIVE,b->pos.x,b->pos.y,16,16,(col3){2,2,2},1,false,G.time*720.0f);
-        } else if (b->kind==8){ // 검기: 진행 방향에 수직인 칼날 띠
-            float ang=atan2f(b->vel.y,b->vel.x)+1.5708f;
-            float ex=cosf(ang)*11.0f, ey=sinf(ang)*11.0f;
-            draw_line(b->pos.x-ex,b->pos.y-ey,b->pos.x+ex,b->pos.y+ey,3.0f,(col3){1.4f,2.2f,2.0f},0.95f);
+        } else if (b->kind==8){
+            v2 forward=v2norm(b->vel), side=V2(-forward.y,forward.x);
+            v2 previous=v2add(b->pos,v2add(v2scale(side,-11.0f),v2scale(forward,-1.0f)));
+            for (int k=1;k<=6;k++){
+                float u=-1.0f+(float)k/3.0f;
+                v2 next=v2add(b->pos,v2add(v2scale(side,u*11.0f),v2scale(forward,5.0f*(1.0f-u*u)-1.0f)));
+                draw_line(previous.x,previous.y,next.x,next.y,3.2f,(col3){1.5f,2.3f,2.1f},0.95f);
+                draw_line(previous.x-forward.x*2.0f,previous.y-forward.y*2.0f,
+                          next.x-forward.x*2.0f,next.y-forward.y*2.0f,1.1f,COL(0x7CFCE4),0.6f);
+                previous=next;
+            }
         } else {
             draw_quad(b->pos.x-b->radius,b->pos.y-b->radius,b->radius*2,b->radius*2,c,0.9f);
         }
@@ -492,19 +507,23 @@ void draw_play(void){
             v2 d=combat_slash_dir();
             float prog=1.0f-st/0.14f;
             if (player_has_wrelic(WR_SWORD_WHIRL)){
-                // 회전 베기: 전방향을 도는 원형 칼날 (반경 40 — 타격 범위와 일치)
                 float rad=40.0f;
-                int N=16;
                 float spin=prog*6.2832f;
-                for (int k=0;k<N;k++){
-                    float a0=k*6.2832f/N+spin, a1=(k+1)*6.2832f/N+spin;
-                    float al=(1.0f-prog*0.6f)*0.9f;
-                    draw_line(p->pos.x+cosf(a0)*rad,p->pos.y+sinf(a0)*rad,
-                              p->pos.x+cosf(a1)*rad,p->pos.y+sinf(a1)*rad,2.5f,(col3){1.6f,2.2f,2.0f},al);
+                for (int layer=0;layer<3;layer++){
+                    float rr=rad-(float)layer*5.0f;
+                    float offset=spin+(float)layer*1.65f;
+                    for (int arc=0;arc<3;arc++){
+                        float start=offset+(float)arc*2.0944f;
+                        for (int k=0;k<5;k++){
+                            float a0=start+(float)k*0.22f, a1=start+(float)(k+1)*0.22f;
+                            float alpha=(0.95f-(float)layer*0.18f)*(1.0f-prog*0.55f)*(1.0f-(float)k*0.1f);
+                            draw_line(p->pos.x+cosf(a0)*rr,p->pos.y+sinf(a0)*rr,
+                                      p->pos.x+cosf(a1)*rr,p->pos.y+sinf(a1)*rr,
+                                      3.3f-(float)layer*0.7f,layer==0?(col3){1.8f,2.4f,2.2f}:COL(0x7CFCE4),alpha);
+                        }
+                    }
                 }
-                // 안쪽 회전 잔광
-                float a=prog*9.0f;
-                draw_line(p->pos.x,p->pos.y,p->pos.x+cosf(a)*rad,p->pos.y+sinf(a)*rad,2.0f,COL(0x7CFCE4),0.7f-prog*0.4f);
+                draw_ring(p->pos.x,p->pos.y,18.0f+prog*8.0f,COL(0x9FFFF0),(1.0f-prog)*0.38f);
             } else {
                 float base=atan2f(d.y,d.x);
                 float a=base-1.0f+prog*2.0f;
@@ -515,7 +534,9 @@ void draw_play(void){
         // 캐논 차지
         if (p->charging){
             float ch=p->charge;
-            if (p->weapon.type==WPN_WAND && player_has_wrelic(WR_WAND_DELAY)){
+            bool tiered=(p->weapon.type==WPN_WAND && player_has_wrelic(WR_WAND_DELAY)) ||
+                        (p->weapon.type==WPN_SWORD && player_has_wrelic(WR_SWORD_PHASE));
+            if (tiered){
                 static const col3 stage_colors[5]={
                     {0.25f,0.88f,0.77f},{0.49f,0.99f,0.89f},{1.00f,0.75f,0.02f},
                     {1.00f,0.28f,0.02f},{1.00f,0.24f,0.50f}
@@ -526,6 +547,11 @@ void draw_play(void){
                 draw_quad(x,y,width*ch,2,stage_colors[wand_rain_charge_tier(ch)],0.95f);
                 for (int i=0;i<4;i++)
                     draw_quad(x+width*marks[i]-0.5f,y-1,1,4,COL(0xE8FFF9),ch+0.00001f>=marks[i]?0.95f:0.42f);
+                if (p->weapon.type==WPN_SWORD){
+                    char hit_count[8];
+                    snprintf(hit_count,sizeof(hit_count),"x%d",sword_phase_charge_hits(ch));
+                    draw_text(hit_count,x+width+3.0f,y-2.0f,0.34f,stage_colors[wand_rain_charge_tier(ch)],0.95f);
+                }
             } else {
                 draw_quad(p->pos.x-10,p->pos.y-14,20*ch,2,COL(0x7CFCE4),0.9f);
             }
@@ -906,6 +932,14 @@ static void draw_training_hud(void){
         draw_text_center("E : 장착",VIRT_W*0.5f,47,0.38f,COL(0xE8E0F8),0.96f);
     } else {
         draw_text_center("무한 더미",VIRT_W*0.5f,57,0.56f,COL(0xFFB0CC),0.95f);
+    }
+    {
+        v2 button=V2(VIRT_W*(2.0f/3.0f),88.0f);
+        if (v2len(v2sub(p->pos,button))<=24.0f){
+            float x=button.x-G.cam.x, y=button.y-G.cam.y-20.0f;
+            draw_quad(x-18,y-2,36,11,COL(0x0B0710),0.86f);
+            draw_text_center("E  소환",x,y,0.36f,COL(0x9FFFF0),1);
+        }
     }
 
     for (int w=0;w<WPN_COUNT;w++){
@@ -2840,14 +2874,40 @@ static void debug_fixture_modifiers(void){
     debug_invariant("sword-wave-stops-at-wall",1,wave&&!wave->active?1:0);
     debug_invariant("sword-wave-wall-blocks-damage",10000,(int)lroundf(G.ents[0].hp*1000.0f));
     G.room.tiles[5][6]=saved_blade_wall;
+    debug_invariant("sword-base-damage-plus-10",3300,(int)lroundf(weapon_defs[WPN_SWORD].dmg*1000.0f));
+    debug_invariant("sword-base-cooldown-minus-20-speed",312,(int)lroundf(weapon_defs[WPN_SWORD].cooldown*1000.0f));
+    debug_invariant("glaive-base-speed-plus-50",390,(int)lroundf(weapon_defs[WPN_GLAIVE].speed));
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.pos=fixture_pos; G.pl.attack_cd=0; G.pl.wrelics[0]=WR_SWORD_WAVE; G.pl.wrelics[1]=WR_SWORD_WHIRL;
+    attack_held=true; fire_weapon(0); attack_held=false;
+    int radial_waves=0; float radial_wave_damage=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==8){ radial_waves++; radial_wave_damage=G.bullets[i].dmg; }
+    debug_invariant("sword-wave-whirl-eight-directions",8,radial_waves);
+    debug_invariant("sword-wave-whirl-suppresses-wave-damage",(int)lroundf(player_attack_damage()*1000.0f),(int)lroundf(radial_wave_damage*1000.0f));
     memset(G.ents,0,sizeof G.ents);
+    memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
     G.pl.weapon.type=WPN_SWORD; G.pl.pos=V2(80,80); G.pl.hp=3.0f; G.pl.maxhp=5;
     G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=-1;
-    G.ents[0]=(Entity){true,E_BAT,V2(104,80),V2(0,0),1.0f,4.0f,7.0f};
-    G.ents[1]=(Entity){true,E_BAT,V2(152,80),V2(0,0),20.0f,20.0f,7.0f};
-    enemy_damage(&G.ents[0],10.0f,G.pl.pos,0,0,false,true,91);
-    debug_invariant("sword-phase-steps-to-nearest",152000,(int)lroundf(G.pl.pos.x*1000.0f));
-    debug_invariant("sword-phase-double-damage",1,G.ents[1].hp<18.0f?1:0);
+    debug_invariant("sword-phase-below-25-hits",1,sword_phase_charge_hits(0.249f));
+    debug_invariant("sword-phase-25-hits",2,sword_phase_charge_hits(0.25f));
+    debug_invariant("sword-phase-50-hits",3,sword_phase_charge_hits(0.50f));
+    debug_invariant("sword-phase-75-hits",4,sword_phase_charge_hits(0.75f));
+    debug_invariant("sword-phase-100-hits",6,sword_phase_charge_hits(1.0f));
+    G.ents[0]=(Entity){true,E_BAT,V2(120,80),V2(0,0),1000.0f,1000.0f,7.0f};
+    G.pl.attack_cd=0; G.pl.charge=1.0f; G.pl.charging=true; attack_held=false;
+    fire_weapon(0);
+    for (int i=0;i<5;i++) update_phase_attack(0.2f);
+    debug_invariant("sword-phase-full-six-hits",6,G.enemy_feedback[0].hits);
+    debug_invariant("sword-phase-double-damage",1,G.ents[0].hp<960.0f?1:0);
+    debug_invariant("sword-phase-step-invulnerability",1,G.pl.iframes>=0.2f?1:0);
+    memset(G.ents,0,sizeof G.ents); memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
+    G.pl.pos=V2(80,80); G.pl.wrelics[0]=WR_SWORD_PHASE; G.pl.wrelics[1]=WR_SWORD_WHIRL;
+    G.ents[0]=(Entity){true,E_BAT,V2(120,80),V2(0,0),1000.0f,1000.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,V2(128,80),V2(0,0),1000.0f,1000.0f,7.0f};
+    G.pl.attack_cd=0; G.pl.charge=1.0f; G.pl.charging=true; attack_held=false;
+    fire_weapon(0);
+    debug_invariant("sword-phase-whirl-main-plus-area-hits",3,G.enemy_feedback[0].hits+G.enemy_feedback[1].hits);
+    phase_attack.active=false;
     memset(G.ents,0,sizeof G.ents);
     G.pl.pos=V2(80,80); G.pl.hp=1.0f; G.pl.maxhp=5;
     G.pl.wrelics[0]=WR_SWORD_EXECUTE; G.pl.wrelics[1]=-1;
@@ -2856,6 +2916,15 @@ static void debug_fixture_modifiers(void){
     enemy_damage(&G.ents[0],1.0f,G.pl.pos,0,0,false,true,92);
     debug_invariant("sword-execute-quarter-heal",1250,(int)lroundf(G.pl.hp*1000.0f));
     debug_invariant("sword-execute-area-damage",1,G.ents[1].hp<20.0f?1:0);
+    memset(G.bullets,0,sizeof G.bullets); memset(G.ents,0,sizeof G.ents);
+    G.pl.wrelics[0]=WR_SWORD_EXECUTE; G.pl.wrelics[1]=WR_SWORD_WAVE;
+    G.ents[0]=(Entity){true,E_BAT,V2(104,80),V2(0,0),2.0f,10.0f,7.0f};
+    G.ents[1]=(Entity){true,E_BAT,V2(126,80),V2(0,0),20.0f,20.0f,7.0f};
+    enemy_damage(&G.ents[0],1.0f,G.pl.pos,0,0,false,true,93);
+    int execute_fragments=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==8) execute_fragments++;
+    debug_invariant("sword-wave-execute-eight-fragments",8,execute_fragments);
+    debug_invariant("sword-wave-execute-area-damage",1,G.ents[1].hp<20.0f?1:0);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.wrelics[0]=WR_CANNON_FUSE; G.pl.wrelics[1]=-1;
@@ -3034,7 +3103,7 @@ static void debug_fixture_modifiers(void){
     Bullet* burn_zone=NULL;
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11){ burn_zones++; burn_zone=&G.bullets[i]; }
     debug_invariant("glaive-return-damage-plus-40",5600,(int)lroundf(glaive->dmg*1000.0f));
-    debug_invariant("glaive-return-speed-plus-30",4394,(int)lroundf(-glaive->vel.x*10.0f));
+    debug_invariant("glaive-return-speed-plus-30",6591,(int)lroundf(-glaive->vel.x*10.0f));
     debug_invariant("glaive-trail-creates-burn-zone",1,burn_zones);
     debug_invariant("glaive-burn-zone-duration-ms",3000,(int)lroundf(burn_zone->life*1000.0f));
     glaive->active=false;
@@ -3802,6 +3871,11 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==30) return "cannon-rail-fuse-start";
     if (DBG_CFG.showcase_checkpoint==31) return "cannon-rail-fuse-end";
     if (DBG_CFG.showcase_checkpoint==32) return "cannon-rail-recoil";
+    if (DBG_CFG.showcase_checkpoint==33) return "sword-phase-50";
+    if (DBG_CFG.showcase_checkpoint==34) return "sword-phase-full";
+    if (DBG_CFG.showcase_checkpoint==35) return "sword-wave";
+    if (DBG_CFG.showcase_checkpoint==36) return "sword-whirl";
+    if (DBG_CFG.showcase_checkpoint==37) return "training-summon";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3813,7 +3887,8 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
-        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=32)) return ST_PLAY;
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=36)) return ST_PLAY;
+    if (DBG_CFG.showcase_checkpoint==37) return ST_TRAINING;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -4006,6 +4081,27 @@ static void debug_prepare_ui_showcase(void){
             G.ents[i].hp=G.ents[i].maxhp=1000.0f;
             G.ents[i].spawn_t=0;
         }
+    } else if (DBG_CFG.showcase_checkpoint>=33 && DBG_CFG.showcase_checkpoint<=36) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.58f);
+        G.pl.weapon.type=WPN_SWORD;
+        G.pl.aim=V2(1,0);
+        G.room.cleared=true;
+        spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(72.0f,0)));
+        G.ents[0].hp=G.ents[0].maxhp=1000.0f;
+        G.ents[0].spawn_t=0;
+        if (DBG_CFG.showcase_checkpoint<=34) G.pl.wrelics[0]=WR_SWORD_PHASE;
+        else if (DBG_CFG.showcase_checkpoint==35) G.pl.wrelics[0]=WR_SWORD_WAVE;
+        else G.pl.wrelics[0]=WR_SWORD_WHIRL;
+        G.pl.wrelics[1]=-1;
+    } else if (DBG_CFG.showcase_checkpoint==37) {
+        start_training();
+        G.state=ST_TRAINING;
+        G.pl.pos=V2(VIRT_W*(2.0f/3.0f),88.0f);
+        training_try_summon();
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -4124,6 +4220,25 @@ static void debug_showcase_tick(float dt){
         }
         G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint==33 || DBG_CFG.showcase_checkpoint==34){
+        attack_held=true;
+        G.pl.charging=true;
+        G.pl.charge=DBG_CFG.showcase_checkpoint==33?0.5f:1.0f;
+        G.pl.vel=V2(0,0);
+        G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint==35){
+        memset(G.bullets,0,sizeof G.bullets);
+        Bullet* wave=spawn_bullet(true,8,v2add(G.pl.pos,V2(28,0)),V2(360,0),player_attack_damage()*1.2f,1.0f,7.0f,999);
+        if (wave) wave->attack_group=G.pl.attack_group;
+        slash_t=0.08f; slash_dir=V2(1,0);
+        G.pl.vel=V2(0,0); G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint==36){
+        slash_t=0.09f; slash_dir=V2(1,0);
+        G.pl.vel=V2(0,0); G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint==37){
+        G.pl.vel=V2(0,0); G.pl.iframes=60.0f;
+        for (int i=0;i<MAX_FLOATERS;i++)
+            if (!strcmp(G.floaters[i].text,"몬스터 1기 소환")) G.floaters[i].t=1.0f;
     }
     dbg_showcase_frames++;
     debug_invariant("showcase-state-after-drive",debug_showcase_expected_state(),G.state);
@@ -4151,6 +4266,7 @@ static const char* debug_state_name(int state){
         case ST_ENDING: return "ST_ENDING";
         case ST_DEAD: return "ST_DEAD";
         case ST_PAUSE: return "ST_PAUSE";
+        case ST_TRAINING: return "ST_TRAINING";
         default: return "other";
     }
 }
@@ -4527,6 +4643,24 @@ static void debug_fixture_training(void){
     debug_invariant("training-dummy-static-x",(int)lroundf(dummy_pos.x*1000.0f),(int)lroundf(G.ents[0].pos.x*1000.0f));
     debug_invariant("training-dummy-static-y",(int)lroundf(dummy_pos.y*1000.0f),(int)lroundf(G.ents[0].pos.y*1000.0f));
     debug_invariant("training-dummy-no-bullets",0,debug_enemy_bullets());
+    G.pl.pos=V2(VIRT_W*(2.0f/3.0f),88.0f);
+    debug_invariant("training-summon-button-consumes-e",1,training_try_summon()?1:0);
+    int passive_count=0, passive_slot=-1;
+    for (int i=1;i<MAX_ENTITIES;i++) if (G.ents[i].active&&G.ents[i].training_passive){ passive_count++; passive_slot=i; }
+    debug_invariant("training-summons-one-passive-flyer",1,passive_count);
+    v2 passive_pos=G.ents[passive_slot].pos;
+    debug_invariant("training-summon-cooldown-blocks-repeat",1,training_try_summon()?1:0);
+    update_play(0.5f);
+    passive_count=0;
+    for (int i=1;i<MAX_ENTITIES;i++) if (G.ents[i].active&&G.ents[i].training_passive) passive_count++;
+    debug_invariant("training-summon-cooldown-keeps-count",1,passive_count);
+    debug_invariant("training-passive-flyer-moves",1,v2len(v2sub(G.ents[passive_slot].pos,passive_pos))>0.1f?1:0);
+    debug_invariant("training-passive-flyer-no-bullets",0,debug_enemy_bullets());
+    update_play(0.51f);
+    training_try_summon();
+    passive_count=0;
+    for (int i=1;i<MAX_ENTITIES;i++) if (G.ents[i].active&&G.ents[i].training_passive) passive_count++;
+    debug_invariant("training-summon-cooldown-one-second",2,passive_count);
 
     Pickup* cannon=&G.pickups[5];
     int cannon_station_weapon=cannon->weapon.type;
@@ -5112,6 +5246,7 @@ void game_event(const sapp_event* e){
         }
         else if (e->key_code==SAPP_KEYCODE_Q && !G.training_active) player_drop_shard();
         else if (e->key_code==SAPP_KEYCODE_E){
+            if (G.training_active && training_try_summon()) break;
             // 가까운 픽업 줍기
             float best=22.0f; Pickup* bp=NULL;
             for (int i=0;i<MAX_PICKUPS;i++){

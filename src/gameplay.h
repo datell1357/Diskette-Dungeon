@@ -54,6 +54,7 @@ typedef struct {
     float face;            // 바라보는 각도 (패리티 방패)
     v2 target;             // ai 목적지/텔레그래프
     float spawn_t;         // 등장 연출
+    bool training_passive;
 } Entity;
 
 typedef struct {
@@ -248,6 +249,7 @@ typedef struct {
     int relic_swap_slots[4];
     bool run_settled;
     bool training_active;
+    float training_summon_cd;
     AoeZone zones[MAX_ZONES];  // 범위지정 공격 예고
 } Game;
 
@@ -258,6 +260,7 @@ extern const RelicDef relic_defs[RELIC_COUNT];
 extern const WeaponRelicDef weapon_relic_defs[WR_COUNT];
 bool player_has_wrelic(int wr);
 int wand_rain_charge_tier(float charge);
+int sword_phase_charge_hits(float charge);
 int player_wrelic_count(void);
 bool event_resolve_choice(int decision);
 void event_assign_pending_trait(void);
@@ -274,6 +277,7 @@ void start_run(void);
 void start_run_with_seed(uint32_t seed);
 void start_run_after_intro(void);
 void start_training(void);
+bool training_try_summon(void);
 enum { SETTLE_DEATH=0, SETTLE_FORFEIT };
 bool settle_run_once(int reason);
 #ifdef DD_DEBUG

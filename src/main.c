@@ -545,6 +545,11 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"cannon-rail-fuse-start")) DBG_CFG.showcase_checkpoint=30;
             else if(!strcmp(checkpoint,"cannon-rail-fuse-end")) DBG_CFG.showcase_checkpoint=31;
             else if(!strcmp(checkpoint,"cannon-rail-recoil")) DBG_CFG.showcase_checkpoint=32;
+            else if(!strcmp(checkpoint,"sword-phase-50")) DBG_CFG.showcase_checkpoint=33;
+            else if(!strcmp(checkpoint,"sword-phase-full")) DBG_CFG.showcase_checkpoint=34;
+            else if(!strcmp(checkpoint,"sword-wave")) DBG_CFG.showcase_checkpoint=35;
+            else if(!strcmp(checkpoint,"sword-whirl")) DBG_CFG.showcase_checkpoint=36;
+            else if(!strcmp(checkpoint,"training-summon")) DBG_CFG.showcase_checkpoint=37;
             else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
             else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
             else if(!strcmp(checkpoint,"retry")) DBG_CFG.opening_checkpoint=3;

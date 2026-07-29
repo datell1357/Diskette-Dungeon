@@ -28,10 +28,10 @@ bool dd_debug_clean_profile_active(void){
 
 // ----------------------------------------------------------- data tables
 const WeaponDef weapon_defs[WPN_COUNT] = {
-    {"포인터 블레이드", 3.0f, 0.26f,   0, 64, SPR_SWORD},
+    {"포인터 블레이드", 3.3f, 0.312f,  0, 64, SPR_SWORD},
     {"비트 캐논",       2.0f, 0.50f, 430, 96, SPR_CANNON},
     {"패킷 스프레이",   1.1f, 0.46f, 320, 80, SPR_SPRAY},
-    {"루프 글레이브",   3.0f, 0.20f, 260, 88, SPR_GLAIVE},
+    {"루프 글레이브",   3.0f, 0.20f, 390, 88, SPR_GLAIVE},
     {"널 랜스",         5.5f, 0.78f, 310, 72, SPR_LANCE},
     {"에코 완드",       1.3f, 0.30f, 240, 84, SPR_WAND},
 };
@@ -46,10 +46,10 @@ const RelicDef relic_defs[RELIC_COUNT] = {
     {"배드섹터 부적", 56, "무결성 2 이하일 때 피해 +50%"},
 };
 const WeaponRelicDef weapon_relic_defs[WR_COUNT] = {
-    {"검기 칩",     WPN_SWORD,  88, "공속 -30%, 공격 시 관통 검기 발사 (벽에 닿으면 소멸)"},
-    {"회전 베기",   WPN_SWORD,  80, "휘두를 때 전방향을 베고 적 탄을 상쇄한다"},
-    {"위상 스텝",   WPN_SWORD, 104, "처치 시 가까운 적에게 이동해 200% 위상 공격"},
-    {"처형 루틴",   WPN_SWORD,  96, "25% 이하 일반 적 처형, 0.25 회복과 50% 범위 피해"},
+    {"검기 칩",     WPN_SWORD,  88, "공속 -50%·피해 +20%, 반달 검기 발사"},
+    {"회전 베기",   WPN_SWORD,  80, "전방향을 베고 적 탄막을 상쇄한다"},
+    {"위상 스텝",   WPN_SWORD, 104, "3초 차지, 단계별 1/2/3/4/6회 200% 위상 공격"},
+    {"처형 루틴",   WPN_SWORD,  96, "25% 이하 일반 적 처형, 0.25 회복과 120% 범위 피해"},
     {"파편 탄두",   WPN_CANNON, 96, "벽 반사 6파편, 레일 조합 시 40% 반사 레이저 4갈래"},
     {"관통 레일",   WPN_CANNON, 88, "완충 피해·폭 +30% 직선 레이저"},
     {"지연 신관",   WPN_CANNON, 88, "충돌 지연 폭발, 레일 조합 시 적중 대상 모두 발동"},
@@ -75,6 +75,11 @@ bool player_has_wrelic(int wr){ return G.pl.wrelics[0]==wr || G.pl.wrelics[1]==w
 int wand_rain_charge_tier(float charge){
     float value=charge+0.00001f;
     return (value>=0.25f)+(value>=0.5f)+(value>=0.75f)+(value>=1.0f);
+}
+int sword_phase_charge_hits(float charge){
+    int tier=wand_rain_charge_tier(charge);
+    static const int hits[5]={1,2,3,4,6};
+    return hits[tier];
 }
 int player_wrelic_count(void){ int n=0; if(G.pl.wrelics[0]>=0)n++; if(G.pl.wrelics[1]>=0)n++; return n; }
 
@@ -1032,6 +1037,7 @@ void start_training(void){
     Player* p=&G.pl;
 
     G.training_active=true;
+    G.training_summon_cd=0;
     memset(&G.memory,0,sizeof(G.memory));
     memset(p,0,sizeof(*p));
     memset(G.ents,0,sizeof(G.ents));
