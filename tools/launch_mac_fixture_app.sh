@@ -72,7 +72,8 @@ case "$action:$checkpoint" in
         ;;
     fixture-ddd-ui-showcase:death|fixture-ddd-ui-showcase:door|fixture-ddd-ui-showcase:pause|\
     fixture-ddd-ui-showcase:hit|fixture-ddd-ui-showcase:boss-reward|fixture-ddd-ui-showcase:relic-swap|\
-    fixture-ddd-ui-showcase:memory-event|fixture-ddd-ui-showcase:boss-intro|fixture-ddd-ui-showcase:core-flashback)
+    fixture-ddd-ui-showcase:memory-event|fixture-ddd-ui-showcase:boss-intro|fixture-ddd-ui-showcase:core-flashback|\
+    fixture-ddd-ui-showcase:fire-trail-start|fixture-ddd-ui-showcase:fire-trail-mid|fixture-ddd-ui-showcase:fire-trail-end)
         [ -z "$core_count" ] && [ -z "$retry_phase" ] || fail "showcase fixtures do not accept core counts or retry phases"
         core_label=none
         ;;

@@ -124,7 +124,7 @@ static void begin_glaive_return(Bullet* b, Player* p){
 }
 
 static void spawn_glaive_burn_zone(v2 pos, uint32_t attack_group){
-    Bullet* zone=spawn_bullet(true,11,pos,V2(0,0),player_attack_damage()*0.5f,2.0f,18.0f,0);
+    Bullet* zone=spawn_bullet(true,11,pos,V2(0,0),player_attack_damage()*0.5f,3.0f,18.0f,0);
     if (!zone) return;
     zone->trail_t=1.0f;
     zone->attack_group=attack_group;

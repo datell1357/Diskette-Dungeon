@@ -185,6 +185,7 @@ def matrix_cases(root: Path, python: Path) -> tuple[Case, ...]:
         ("death", "ST_DEAD"), ("door", "ST_PLAY"), ("pause", "ST_PAUSE"),
         ("hit", "ST_PLAY"), ("boss-reward", "ST_PLAY"), ("relic-swap", "ST_RELIC_SWAP"),
         ("memory-event", "ST_PLAY"), ("boss-intro", "ST_PLAY"), ("core-flashback", "ST_FLASHBACK"),
+        ("fire-trail-start", "ST_PLAY"), ("fire-trail-mid", "ST_PLAY"), ("fire-trail-end", "ST_PLAY"),
     ):
         cases.append(Case(
             f"showcase-{checkpoint}",

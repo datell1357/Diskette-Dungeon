@@ -315,13 +315,40 @@ void draw_play(void){
         }
         draw_sprite(pickup_sprite(pk),pk->pos.x,pk->pos.y+bob,s,s,ptint,1,false,0);
     }
-    // 화염 궤적: 적과 플레이어 아래에 남는 2초 화상지대
+    // 화염 궤적: 적과 플레이어 아래에 남는 3초 화상지대
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active || b->kind!=11) continue;
-        float a=clampf(b->life/2.0f,0,1);
-        draw_quad(b->pos.x-b->radius,b->pos.y-b->radius,b->radius*2,b->radius*2,COL(0xFF7A3D),0.10f+0.10f*a);
-        draw_ring(b->pos.x,b->pos.y,b->radius,COL(0xFFB05A),0.28f+0.22f*a);
+        float age=3.0f-b->life;
+        float fade=clampf(age*7.0f,0,1)*clampf(b->life*2.5f,0,1);
+        float phase=(float)i*1.731f;
+        for (int k=0;k<7;k++){
+            float angle=phase+(float)k*2.17f;
+            float x=b->pos.x+cosf(angle)*b->radius*(0.18f+0.08f*(float)(k%3));
+            float y=b->pos.y+sinf(angle)*b->radius*0.28f;
+            float len=5.0f+(float)(k%3)*2.0f;
+            float tilt=sinf(G.time*5.0f+angle)*2.0f;
+            draw_line(x-len*0.5f,y,x+len*0.5f,y+tilt,3.4f,(col3){1.8f,0.24f,0.08f},0.32f*fade);
+            draw_line(x-len*0.38f,y-0.5f,x+len*0.38f,y+tilt-0.5f,1.4f,(col3){2.2f,0.82f,0.12f},0.62f*fade);
+        }
+        for (int f=0;f<6;f++){
+            float angle=phase+(float)f*2.399f;
+            float orbit=2.0f+(float)(f%3)*3.0f;
+            float flicker=sinf(G.time*(7.0f+(float)f)+(float)f*1.9f);
+            float x=b->pos.x+cosf(angle)*orbit;
+            float y=b->pos.y+sinf(angle)*orbit*0.42f+2.0f;
+            float h=7.0f+(float)(f%3)*2.4f+flicker*1.4f;
+            float sway=flicker*2.2f;
+            draw_line(x-2.5f,y,x+sway,y-h,2.8f,(col3){2.0f,0.28f,0.08f},0.68f*fade);
+            draw_line(x+2.5f,y,x+sway,y-h,2.1f,(col3){2.3f,0.72f,0.12f},0.82f*fade);
+            draw_line(x,y-1.0f,x+sway*0.7f,y-h*0.72f,1.1f,(col3){2.6f,1.65f,0.34f},0.94f*fade);
+        }
+        for (int s=0;s<3;s++){
+            float rise=fmodf(G.time*1.7f+phase*0.11f+(float)s*0.27f,1.0f);
+            float drift=sinf(phase+(float)s*2.3f+G.time*4.0f)*3.0f;
+            float size=1.0f+(1.0f-rise)*1.1f;
+            draw_quad(b->pos.x+drift+(float)(s-2)*2.0f,b->pos.y-5.0f-rise*13.0f,size,size,(col3){2.4f,1.3f,0.22f},(1.0f-rise)*0.72f*fade);
+        }
     }
     // 적
     for (int i=0;i<MAX_ENTITIES;i++){
@@ -393,7 +420,11 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
-        if (b->kind==11) continue;
+        if (b->kind==11){
+            float fade=clampf((3.0f-b->life)*7.0f,0,1)*clampf(b->life*2.5f,0,1);
+            draw_light_blob(b->pos.x,b->pos.y,b->radius*2.3f,(col3){1.8f,0.34f,0.08f},0.28f*fade);
+            continue;
+        }
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -462,7 +493,11 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
-        if (b->kind==11) continue;
+        if (b->kind==11){
+            float fade=clampf((3.0f-b->life)*7.0f,0,1)*clampf(b->life*2.5f,0,1);
+            draw_glow_blob(b->pos.x,b->pos.y,b->radius*1.5f,(col3){2.1f,0.56f,0.1f},0.38f*fade);
+            continue;
+        }
         col3 c=b->from_player?COL(0x3FE0C5):COL(0xFF3D7F);
         draw_light_blob(b->pos.x,b->pos.y,b->radius*5.0f,c,0.5f);
     }
@@ -2863,14 +2898,20 @@ static void debug_fixture_modifiers(void){
     glaive->attack_group=94;
     update_bullets(0);
     int burn_zones=0;
-    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11) burn_zones++;
+    Bullet* burn_zone=NULL;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11){ burn_zones++; burn_zone=&G.bullets[i]; }
     debug_invariant("glaive-return-damage-plus-40",5600,(int)lroundf(glaive->dmg*1000.0f));
     debug_invariant("glaive-return-speed-plus-30",4394,(int)lroundf(-glaive->vel.x*10.0f));
     debug_invariant("glaive-trail-creates-burn-zone",1,burn_zones);
+    debug_invariant("glaive-burn-zone-duration-ms",3000,(int)lroundf(burn_zone->life*1000.0f));
     glaive->active=false;
     G.ents[0].hp=20.0f;
     update_bullets(1.0f);
     debug_invariant("glaive-burn-zone-half-damage",(int)lroundf((20.0f-player_attack_damage()*0.5f)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
+    update_bullets(1.9f);
+    debug_invariant("glaive-burn-zone-active-before-3s",1,burn_zone->active?1:0);
+    update_bullets(0.2f);
+    debug_invariant("glaive-burn-zone-expires-after-3s",0,burn_zone->active?1:0);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_LANCE; G.pl.pos=fixture_pos;
@@ -3453,6 +3494,9 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==7) return "memory-event";
     if (DBG_CFG.showcase_checkpoint==8) return "boss-intro";
     if (DBG_CFG.showcase_checkpoint==9) return "core-flashback";
+    if (DBG_CFG.showcase_checkpoint==11) return "fire-trail-start";
+    if (DBG_CFG.showcase_checkpoint==12) return "fire-trail-mid";
+    if (DBG_CFG.showcase_checkpoint==13) return "fire-trail-end";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3463,7 +3507,8 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==1) return ST_DEAD;
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
-        DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8) return ST_PLAY;
+        DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=13)) return ST_PLAY;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -3588,6 +3633,15 @@ static void debug_prepare_ui_showcase(void){
         G.fb_t=4.0f;
         G.state=ST_FLASHBACK;
         G.state_t=0;
+    } else if (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=13) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.68f);
+        G.pl.weapon.type=WPN_GLAIVE;
+        G.room.cleared=true;
+        for (int i=-3;i<=3;i++) spawn_glaive_burn_zone(v2add(G.pl.pos,V2((float)i*22.0f,-62.0f+sinf((float)i)*8.0f)),700+(uint32_t)(i+3));
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3601,6 +3655,13 @@ static void debug_prepare_ui_showcase(void){
 static void debug_showcase_tick(float dt){
     if (!dbg_showcase_active) return;
     if (DBG_CFG.showcase_checkpoint==1 && G.state!=ST_DEAD) return;
+    if (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=13){
+        static const float life[3]={2.9f,1.5f,0.18f};
+        static const float time[3]={0.08f,0.55f,0.96f};
+        G.time=time[DBG_CFG.showcase_checkpoint-11];
+        for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11)
+            G.bullets[i].life=life[DBG_CFG.showcase_checkpoint-11];
+    }
     dbg_showcase_frames++;
     debug_invariant("showcase-state-after-drive",debug_showcase_expected_state(),G.state);
     if (!dbg_showcase_ready){
