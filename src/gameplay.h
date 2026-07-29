@@ -257,6 +257,7 @@ extern const char* prefix_names[PFX_COUNT];
 extern const RelicDef relic_defs[RELIC_COUNT];
 extern const WeaponRelicDef weapon_relic_defs[WR_COUNT];
 bool player_has_wrelic(int wr);
+int wand_rain_charge_tier(float charge);
 int player_wrelic_count(void);
 bool event_resolve_choice(int decision);
 void event_assign_pending_trait(void);

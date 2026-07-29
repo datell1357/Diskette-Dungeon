@@ -465,8 +465,7 @@ static void fire_weapon(float dt){
             p->charging=false;
             if (p->attack_cd<=0){
                 p->attack_group++;
-                float charge=p->charge+0.00001f;
-                int tiers=(charge>=0.3f)+(charge>=0.5f)+(charge>=0.7f)+(charge>=1.0f);
+                int tiers=wand_rain_charge_tier(p->charge);
                 int count=(player_has_wrelic(WR_WAND_FORK)?4:2)+tiers*2;
                 float shot_dmg=dmg*(1.0f+tiers*0.075f);
                 if (tiers==0){

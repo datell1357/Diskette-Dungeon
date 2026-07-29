@@ -501,7 +501,20 @@ void draw_play(void){
         // 캐논 차지
         if (p->charging){
             float ch=p->charge;
-            draw_quad(p->pos.x-10,p->pos.y-14,20*ch,2,COL(0x7CFCE4),0.9f);
+            if (p->weapon.type==WPN_WAND && player_has_wrelic(WR_WAND_DELAY)){
+                static const col3 stage_colors[5]={
+                    {0.25f,0.88f,0.77f},{0.49f,0.99f,0.89f},{1.00f,0.75f,0.02f},
+                    {1.00f,0.28f,0.02f},{1.00f,0.24f,0.50f}
+                };
+                static const float marks[4]={0.3f,0.5f,0.7f,1.0f};
+                float x=p->pos.x-12.0f, y=p->pos.y-14.0f, width=24.0f;
+                draw_quad(x,y,width,2,COL(0x101A2B),0.85f);
+                draw_quad(x,y,width*ch,2,stage_colors[wand_rain_charge_tier(ch)],0.95f);
+                for (int i=0;i<4;i++)
+                    draw_quad(x+width*marks[i]-0.5f,y-1,1,4,COL(0xE8FFF9),ch+0.00001f>=marks[i]?0.95f:0.42f);
+            } else {
+                draw_quad(p->pos.x-10,p->pos.y-14,20*ch,2,COL(0x7CFCE4),0.9f);
+            }
         }
     }
 
@@ -3106,6 +3119,11 @@ static void debug_fixture_modifiers(void){
     fire_weapon(1.5f);
     attack_held=false;
     debug_invariant("wand-rain-charge-caps-at-one-point-five-seconds",1000,(int)lroundf(G.pl.charge*1000.0f));
+    debug_invariant("wand-rain-gauge-before-first-mark",0,wand_rain_charge_tier(0.299f));
+    debug_invariant("wand-rain-gauge-first-mark",1,wand_rain_charge_tier(0.3f));
+    debug_invariant("wand-rain-gauge-second-mark",2,wand_rain_charge_tier(0.5f));
+    debug_invariant("wand-rain-gauge-third-mark",3,wand_rain_charge_tier(0.7f));
+    debug_invariant("wand-rain-gauge-full-mark",4,wand_rain_charge_tier(1.0f));
     G.light_mul=old_light; G.pl.relics[RELIC_LUMINANCE]=old_lum; G.meta.upg[3]=old_upg;
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"modifiers\",\"status\":\"pass\"}\n");
 }
@@ -3672,6 +3690,11 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==17) return "wand-rain-start";
     if (DBG_CFG.showcase_checkpoint==18) return "wand-rain-mid";
     if (DBG_CFG.showcase_checkpoint==19) return "wand-rain-end";
+    if (DBG_CFG.showcase_checkpoint==20) return "wand-charge-base";
+    if (DBG_CFG.showcase_checkpoint==21) return "wand-charge-30";
+    if (DBG_CFG.showcase_checkpoint==22) return "wand-charge-50";
+    if (DBG_CFG.showcase_checkpoint==23) return "wand-charge-70";
+    if (DBG_CFG.showcase_checkpoint==24) return "wand-charge-full";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3683,7 +3706,7 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
-        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=19)) return ST_PLAY;
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=24)) return ST_PLAY;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -3852,6 +3875,16 @@ static void debug_prepare_ui_showcase(void){
         spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(0,-92.0f)));
         G.ents[0].hp=G.ents[0].maxhp=100.0f;
         G.ents[0].spawn_t=0;
+    } else if (DBG_CFG.showcase_checkpoint>=20 && DBG_CFG.showcase_checkpoint<=24) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.5f,G.room.h*TILE*0.55f);
+        G.pl.weapon.type=WPN_WAND;
+        G.pl.wrelics[0]=WR_WAND_DELAY;
+        G.pl.wrelics[1]=-1;
+        G.room.cleared=true;
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3910,6 +3943,13 @@ static void debug_showcase_tick(float dt){
                 }
             }
         }
+        G.pl.vel=V2(0,0);
+        G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint>=20 && DBG_CFG.showcase_checkpoint<=24){
+        static const float charge_levels[5]={0.0f,0.3f,0.5f,0.7f,1.0f};
+        attack_held=true;
+        G.pl.charging=true;
+        G.pl.charge=charge_levels[DBG_CFG.showcase_checkpoint-20];
         G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
     }
