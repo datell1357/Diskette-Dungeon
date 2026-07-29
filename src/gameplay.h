@@ -106,6 +106,8 @@ typedef struct { float x,y; char text[48]; float t; col3 c; bool screen_fixed; }
 typedef struct {
     v2 pos;
     float t, hp, damage, radius;
+    uint32_t attack_group;
+    int hits;
     bool crit, elite;
 } EnemyFeedback;
 

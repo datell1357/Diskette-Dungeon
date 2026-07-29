@@ -113,6 +113,8 @@ static Bullet* spawn_bullet(bool from_player,int kind,v2 pos,v2 vel,float dmg,fl
 static void begin_glaive_return(Bullet* b, Player* p){
     if (b->returning) return;
     b->returning=true;
+    b->last_hit=-1;
+    b->rehit_t=0;
     float return_speed=weapon_defs[WPN_GLAIVE].speed*1.3f;
     if (b->from_player && player_has_wrelic(WR_GLAIVE_RETURN)){
         return_speed*=1.3f;
@@ -231,19 +233,22 @@ static void enemy_damage(Entity* e,float dmg,v2 from,float burn,float slow,bool 
     if (from_player){
         for (int i=0;i<MAX_ENTITIES;i++) if (e==&G.ents[i]){
             EnemyFeedback* feedback=&G.enemy_feedback[i];
+            bool same_attack=feedback->t>0 && feedback->attack_group==attack_group;
             feedback->pos=e->pos;
             feedback->t=3.0f;
             feedback->hp=clampf(e->hp/e->maxhp,0.0f,1.0f);
-            feedback->damage=dmg;
+            feedback->damage=same_attack?feedback->damage+dmg:dmg;
             feedback->radius=e->radius;
-            feedback->crit=crit;
+            feedback->attack_group=attack_group;
+            feedback->hits=same_attack?feedback->hits+1:1;
+            feedback->crit=same_attack?(feedback->crit||crit):crit;
             feedback->elite=e->elite;
+            e->player_damage=feedback->damage;
+            e->player_damage_crit=feedback->crit;
             break;
         }
         e->player_damaged=true;
-        e->player_damage=dmg;
         e->player_damage_t=0.9f;
-        e->player_damage_crit=crit;
     }
     if (training_dummy){
         e->hp=e->maxhp;
@@ -467,11 +472,11 @@ static void fire_weapon(float dt){
         bool launched=false;
         for (int direction=0;direction<directions;direction++){
             v2 aim=direction==0?p->aim:v2scale(p->aim,-1.0f);
-            v2 side=V2(-aim.y,aim.x);
             for (int n=0;n<per_direction;n++){
-                float offset=per_direction==2?(n==0?-5.0f:5.0f):0.0f;
-                v2 spawn_pos=v2add(p->pos,v2scale(side,offset));
-                Bullet* b=spawn_bullet(true,3,spawn_pos,v2scale(aim,wd->speed),dmg,3.0f,7.0f,999);
+                float angle=per_direction==2?(n==0?-0.0436332f:0.0436332f):0.0f;
+                float cs=cosf(angle), sn=sinf(angle);
+                v2 shot=V2(aim.x*cs-aim.y*sn,aim.x*sn+aim.y*cs);
+                Bullet* b=spawn_bullet(true,3,p->pos,v2scale(shot,wd->speed),dmg,3.0f,7.0f,999);
                 if (!b) continue;
                 b->burn=burn; b->slow=slow; b->crit=crit;
                 launched=true;

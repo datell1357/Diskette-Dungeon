@@ -138,10 +138,12 @@ static void draw_enemy_player_feedback(const EnemyFeedback* feedback){
     draw_quad(x-bar_w*0.5f,y,bar_w*feedback->hp,2,feedback->elite?COL(0xFFD060):COL(0xFF3D7F),0.95f);
     float damage_t=feedback->t-2.1f;
     if (damage_t>0){
-        char damage[24];
+        char damage[48];
         float rise=(0.9f-damage_t)*10.0f;
         float text_y=clampf(y-8.0f-rise,G.cam.y+5.0f,G.cam.y+VIRT_H-12.0f);
-        if (feedback->crit) snprintf(damage,sizeof(damage),"치명 %d",(int)lroundf(feedback->damage));
+        if (feedback->crit && feedback->hits>1) snprintf(damage,sizeof(damage),"치명 %d / %dHIT",(int)lroundf(feedback->damage),feedback->hits);
+        else if (feedback->crit) snprintf(damage,sizeof(damage),"치명 %d",(int)lroundf(feedback->damage));
+        else if (feedback->hits>1) snprintf(damage,sizeof(damage),"%d / %dHIT",(int)lroundf(feedback->damage),feedback->hits);
         else snprintf(damage,sizeof(damage),"%d",(int)lroundf(feedback->damage));
         draw_text_center(damage,x,text_y,feedback->crit?0.58f:0.52f,
                          feedback->crit?COL(0xFFD060):COL(0xFFFFFF),
@@ -2797,15 +2799,16 @@ static void debug_fixture_modifiers(void){
     G.pl.wrelics[0]=WR_GLAIVE_ORBIT; G.pl.wrelics[1]=-1;
     attack_held=true; fire_weapon(0); attack_held=false;
     int orbit_forward=0;
-    float orbit_min_y=1e9f, orbit_max_y=-1e9f;
+    float orbit_min_angle=1e9f, orbit_max_angle=-1e9f;
     for (int i=0;i<MAX_BULLETS;i++)
         if (G.bullets[i].active&&G.bullets[i].kind==3&&G.bullets[i].vel.x>0){
             orbit_forward++;
-            orbit_min_y=fminf(orbit_min_y,G.bullets[i].pos.y);
-            orbit_max_y=fmaxf(orbit_max_y,G.bullets[i].pos.y);
+            float angle=atan2f(G.bullets[i].vel.y,G.bullets[i].vel.x)*57.29578f;
+            orbit_min_angle=fminf(orbit_min_angle,angle);
+            orbit_max_angle=fmaxf(orbit_max_angle,angle);
         }
     debug_invariant("glaive-orbit-double-throw",2,orbit_forward);
-    debug_invariant("glaive-orbit-throws-are-separated",10000,(int)lroundf((orbit_max_y-orbit_min_y)*1000.0f));
+    debug_invariant("glaive-orbit-angle-separation",5000,(int)lroundf((orbit_max_angle-orbit_min_angle)*1000.0f));
     G.ents[0]=(Entity){true,E_BAT,v2add(G.pl.pos,V2(24,0)),V2(0,0),1000.0f,1000.0f,7.0f};
     float orbit_hit_damage=0.0f;
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==3){
@@ -2817,6 +2820,7 @@ static void debug_fixture_modifiers(void){
     float orbit_single_damage=orbit_hit_damage*(1.0f+clampf(orbit_proximity,0.0f,1.0f)*0.20f);
     update_bullets(0);
     debug_invariant("glaive-orbit-independent-hit-damage",2000,(int)lroundf((1000.0f-G.ents[0].hp)/orbit_single_damage*1000.0f));
+    debug_invariant("glaive-orbit-feedback-hit-count",2,G.enemy_feedback[0].hits);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.attack_cd=0; G.pl.glaive_out=false; G.pl.wrelics[1]=WR_GLAIVE_TWIN;
@@ -2836,6 +2840,20 @@ static void debug_fixture_modifiers(void){
     update_bullets(0.1f);
     debug_invariant("glaive-wall-starts-return",1,wall_glaive->active&&wall_glaive->returning?1:0);
     G.room.tiles[5][6]=saved_glaive_wall;
+    memset(G.bullets,0,sizeof G.bullets);
+    memset(G.ents,0,sizeof G.ents);
+    memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
+    G.pl.pos=fixture_pos; G.pl.wrelics[0]=WR_GLAIVE_RETURN; G.pl.wrelics[1]=-1;
+    G.ents[0]=(Entity){true,E_BAT,v2add(fixture_pos,V2(20,0)),V2(0,0),20.0f,20.0f,7.0f};
+    Bullet* close_glaive=spawn_bullet(true,3,G.ents[0].pos,V2(0,0),4.0f,2.0f,7.0f,999);
+    close_glaive->attack_group=97;
+    float close_proximity=1.0f-v2len(v2sub(G.ents[0].pos,G.pl.pos))/player_light_radius();
+    float close_factor=1.0f+clampf(close_proximity,0.0f,1.0f)*0.20f;
+    update_bullets(0);
+    begin_glaive_return(close_glaive,&G.pl);
+    update_bullets(0);
+    debug_invariant("glaive-close-return-damage",(int)lroundf((20.0f-(4.0f+5.6f)*close_factor)*1000.0f),(int)lroundf(G.ents[0].hp*1000.0f));
+    debug_invariant("glaive-close-return-feedback-hit-count",2,G.enemy_feedback[0].hits);
     memset(G.bullets,0,sizeof G.bullets);
     memset(G.ents,0,sizeof G.ents);
     G.pl.weapon.type=WPN_GLAIVE; G.pl.pos=fixture_pos;
