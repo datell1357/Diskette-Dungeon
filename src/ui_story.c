@@ -2808,7 +2808,7 @@ static void debug_fixture_modifiers(void){
             orbit_max_angle=fmaxf(orbit_max_angle,angle);
         }
     debug_invariant("glaive-orbit-double-throw",2,orbit_forward);
-    debug_invariant("glaive-orbit-angle-separation",5000,(int)lroundf((orbit_max_angle-orbit_min_angle)*1000.0f));
+    debug_invariant("glaive-orbit-angle-separation",20000,(int)lroundf((orbit_max_angle-orbit_min_angle)*1000.0f));
     G.ents[0]=(Entity){true,E_BAT,v2add(G.pl.pos,V2(24,0)),V2(0,0),1000.0f,1000.0f,7.0f};
     float orbit_hit_damage=0.0f;
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==3){

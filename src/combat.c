@@ -473,7 +473,7 @@ static void fire_weapon(float dt){
         for (int direction=0;direction<directions;direction++){
             v2 aim=direction==0?p->aim:v2scale(p->aim,-1.0f);
             for (int n=0;n<per_direction;n++){
-                float angle=per_direction==2?(n==0?-0.0436332f:0.0436332f):0.0f;
+                float angle=per_direction==2?(n==0?-0.1745329f:0.1745329f):0.0f;
                 float cs=cosf(angle), sn=sinf(angle);
                 v2 shot=V2(aim.x*cs-aim.y*sn,aim.x*sn+aim.y*cs);
                 Bullet* b=spawn_bullet(true,3,p->pos,v2scale(shot,wd->speed),dmg,3.0f,7.0f,999);
