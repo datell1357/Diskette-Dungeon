@@ -322,16 +322,16 @@ void draw_play(void){
         float age=3.0f-b->life;
         float fade=clampf(age*7.0f,0,1)*clampf(b->life*2.5f,0,1);
         float phase=(float)i*1.731f;
-        for (int k=0;k<7;k++){
+        for (int k=0;k<5;k++){
             float angle=phase+(float)k*2.17f;
             float x=b->pos.x+cosf(angle)*b->radius*(0.18f+0.08f*(float)(k%3));
             float y=b->pos.y+sinf(angle)*b->radius*0.28f;
             float len=5.0f+(float)(k%3)*2.0f;
             float tilt=sinf(G.time*5.0f+angle)*2.0f;
-            draw_line(x-len*0.5f,y,x+len*0.5f,y+tilt,3.4f,(col3){1.8f,0.24f,0.08f},0.32f*fade);
-            draw_line(x-len*0.38f,y-0.5f,x+len*0.38f,y+tilt-0.5f,1.4f,(col3){2.2f,0.82f,0.12f},0.62f*fade);
+            draw_line(x-len*0.5f,y,x+len*0.5f,y+tilt,3.0f,(col3){1.8f,0.24f,0.08f},0.22f*fade);
+            draw_line(x-len*0.38f,y-0.5f,x+len*0.38f,y+tilt-0.5f,1.2f,(col3){2.2f,0.82f,0.12f},0.42f*fade);
         }
-        for (int f=0;f<6;f++){
+        for (int f=0;f<4;f++){
             float angle=phase+(float)f*2.399f;
             float orbit=2.0f+(float)(f%3)*3.0f;
             float flicker=sinf(G.time*(7.0f+(float)f)+(float)f*1.9f);
@@ -339,15 +339,15 @@ void draw_play(void){
             float y=b->pos.y+sinf(angle)*orbit*0.42f+2.0f;
             float h=7.0f+(float)(f%3)*2.4f+flicker*1.4f;
             float sway=flicker*2.2f;
-            draw_line(x-2.5f,y,x+sway,y-h,2.8f,(col3){2.0f,0.28f,0.08f},0.68f*fade);
-            draw_line(x+2.5f,y,x+sway,y-h,2.1f,(col3){2.3f,0.72f,0.12f},0.82f*fade);
-            draw_line(x,y-1.0f,x+sway*0.7f,y-h*0.72f,1.1f,(col3){2.6f,1.65f,0.34f},0.94f*fade);
+            draw_line(x-2.5f,y,x+sway,y-h,2.4f,(col3){2.0f,0.28f,0.08f},0.45f*fade);
+            draw_line(x+2.5f,y,x+sway,y-h,1.8f,(col3){2.3f,0.72f,0.12f},0.58f*fade);
+            draw_line(x,y-1.0f,x+sway*0.7f,y-h*0.72f,1.0f,(col3){2.6f,1.65f,0.34f},0.68f*fade);
         }
-        for (int s=0;s<3;s++){
+        for (int s=0;s<2;s++){
             float rise=fmodf(G.time*1.7f+phase*0.11f+(float)s*0.27f,1.0f);
             float drift=sinf(phase+(float)s*2.3f+G.time*4.0f)*3.0f;
             float size=1.0f+(1.0f-rise)*1.1f;
-            draw_quad(b->pos.x+drift+(float)(s-2)*2.0f,b->pos.y-5.0f-rise*13.0f,size,size,(col3){2.4f,1.3f,0.22f},(1.0f-rise)*0.72f*fade);
+            draw_quad(b->pos.x+drift+(float)(s-1)*3.0f,b->pos.y-5.0f-rise*13.0f,size,size,(col3){2.4f,1.3f,0.22f},(1.0f-rise)*0.50f*fade);
         }
     }
     // 적
@@ -420,11 +420,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
-        if (b->kind==11){
-            float fade=clampf((3.0f-b->life)*7.0f,0,1)*clampf(b->life*2.5f,0,1);
-            draw_light_blob(b->pos.x,b->pos.y,b->radius*2.3f,(col3){1.8f,0.34f,0.08f},0.28f*fade);
-            continue;
-        }
+        if (b->kind==11) continue;
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -495,7 +491,7 @@ void draw_play(void){
         if (!b->active) continue;
         if (b->kind==11){
             float fade=clampf((3.0f-b->life)*7.0f,0,1)*clampf(b->life*2.5f,0,1);
-            draw_glow_blob(b->pos.x,b->pos.y,b->radius*1.5f,(col3){2.1f,0.56f,0.1f},0.38f*fade);
+            draw_light_blob(b->pos.x,b->pos.y,b->radius*1.8f,(col3){1.5f,0.28f,0.06f},0.12f*fade);
             continue;
         }
         col3 c=b->from_player?COL(0x3FE0C5):COL(0xFF3D7F);
@@ -3642,6 +3638,11 @@ static void debug_prepare_ui_showcase(void){
         G.pl.weapon.type=WPN_GLAIVE;
         G.room.cleared=true;
         for (int i=-3;i<=3;i++) spawn_glaive_burn_zone(v2add(G.pl.pos,V2((float)i*22.0f,-62.0f+sinf((float)i)*8.0f)),700+(uint32_t)(i+3));
+        for (int i=-1;i<=1;i++){
+            spawn_enemy(E_SLIME,v2add(G.pl.pos,V2((float)i*44.0f,-62.0f+sinf((float)i)*8.0f)));
+            G.ents[i+1].hp=G.ents[i+1].maxhp=100.0f;
+            G.ents[i+1].spawn_t=0;
+        }
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3661,6 +3662,12 @@ static void debug_showcase_tick(float dt){
         G.time=time[DBG_CFG.showcase_checkpoint-11];
         for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==11)
             G.bullets[i].life=life[DBG_CFG.showcase_checkpoint-11];
+        for (int i=0;i<3;i++){
+            G.ents[i].pos=v2add(G.pl.pos,V2((float)(i-1)*44.0f,-62.0f+sinf((float)(i-1))*8.0f));
+            G.ents[i].vel=V2(0,0);
+            G.ents[i].spawn_t=0;
+        }
+        G.pl.iframes=60.0f;
     }
     dbg_showcase_frames++;
     debug_invariant("showcase-state-after-drive",debug_showcase_expected_state(),G.state);
