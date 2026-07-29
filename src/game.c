@@ -74,7 +74,7 @@ const WeaponRelicDef weapon_relic_defs[WR_COUNT] = {
 bool player_has_wrelic(int wr){ return G.pl.wrelics[0]==wr || G.pl.wrelics[1]==wr; }
 int wand_rain_charge_tier(float charge){
     float value=charge+0.00001f;
-    return (value>=0.3f)+(value>=0.5f)+(value>=0.7f)+(value>=1.0f);
+    return (value>=0.25f)+(value>=0.5f)+(value>=0.75f)+(value>=1.0f);
 }
 int player_wrelic_count(void){ int n=0; if(G.pl.wrelics[0]>=0)n++; if(G.pl.wrelics[1]>=0)n++; return n; }
 

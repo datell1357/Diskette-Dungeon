@@ -506,7 +506,7 @@ void draw_play(void){
                     {0.25f,0.88f,0.77f},{0.49f,0.99f,0.89f},{1.00f,0.75f,0.02f},
                     {1.00f,0.28f,0.02f},{1.00f,0.24f,0.50f}
                 };
-                static const float marks[4]={0.3f,0.5f,0.7f,1.0f};
+                static const float marks[4]={0.25f,0.5f,0.75f,1.0f};
                 float x=p->pos.x-12.0f, y=p->pos.y-14.0f, width=24.0f;
                 draw_quad(x,y,width,2,COL(0x101A2B),0.85f);
                 draw_quad(x,y,width*ch,2,stage_colors[wand_rain_charge_tier(ch)],0.95f);
@@ -3071,9 +3071,9 @@ static void debug_fixture_modifiers(void){
     debug_invariant("wand-rain-below-first-tier-uses-player-origin",2,rain_uncharged_from_player);
     memset(G.bullets,0,sizeof G.bullets); G.pl.attack_cd=0;
     attack_held=true; G.pl.charge=0; G.pl.charging=false;
-    fire_weapon(0.45f);
+    fire_weapon(0.375f);
     attack_held=false;
-    debug_invariant("wand-rain-charge-time-30-percent",300,(int)lroundf(G.pl.charge*1000.0f));
+    debug_invariant("wand-rain-charge-time-25-percent",250,(int)lroundf(G.pl.charge*1000.0f));
     fire_weapon(0);
     int rain_count=0, rain_left=0, rain_right=0, rain_forward=0;
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
@@ -3081,20 +3081,20 @@ static void debug_fixture_modifiers(void){
         if (rain->pos.y<G.pl.pos.y) rain_left++; else if (rain->pos.y>G.pl.pos.y) rain_right++;
         if (fabsf(rain->vel.x)>0.01f) rain_forward++;
     }
-    debug_invariant("wand-rain-tier-30-count",4,rain_count);
-    debug_invariant("wand-rain-tier-30-splits-left",2,rain_left);
-    debug_invariant("wand-rain-tier-30-splits-right",2,rain_right);
-    debug_invariant("wand-rain-tier-30-fans-directions",4,rain_forward);
+    debug_invariant("wand-rain-tier-25-count",4,rain_count);
+    debug_invariant("wand-rain-tier-25-splits-left",2,rain_left);
+    debug_invariant("wand-rain-tier-25-splits-right",2,rain_right);
+    debug_invariant("wand-rain-tier-25-fans-directions",4,rain_forward);
     float rain_base=player_attack_damage();
     for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==5){
-        debug_invariant("wand-rain-tier-30-damage-plus-7-5",(int)lroundf(rain_base*1.075f*1000.0f),(int)lroundf(G.bullets[i].dmg*1000.0f));
+        debug_invariant("wand-rain-tier-25-damage-plus-7-5",(int)lroundf(rain_base*1.075f*1000.0f),(int)lroundf(G.bullets[i].dmg*1000.0f));
         break;
     }
-    static const float rain_charge[3]={0.5f,0.7f,1.0f};
+    static const float rain_charge[3]={0.5f,0.75f,1.0f};
     static const int rain_expected[3]={6,8,10};
     static const float rain_damage_mul[3]={1.15f,1.225f,1.3f};
-    static const char* rain_name[3]={"wand-rain-tier-50-count","wand-rain-tier-70-count","wand-rain-tier-100-count"};
-    static const char* rain_damage_name[3]={"wand-rain-tier-50-damage-plus-15","wand-rain-tier-70-damage-plus-22-5","wand-rain-tier-100-damage-plus-30"};
+    static const char* rain_name[3]={"wand-rain-tier-50-count","wand-rain-tier-75-count","wand-rain-tier-100-count"};
+    static const char* rain_damage_name[3]={"wand-rain-tier-50-damage-plus-15","wand-rain-tier-75-damage-plus-22-5","wand-rain-tier-100-damage-plus-30"};
     for (int tier=0;tier<3;tier++){
         memset(G.bullets,0,sizeof G.bullets);
         G.pl.attack_cd=0; G.pl.charge=rain_charge[tier]; G.pl.charging=true;
@@ -3119,10 +3119,10 @@ static void debug_fixture_modifiers(void){
     fire_weapon(1.5f);
     attack_held=false;
     debug_invariant("wand-rain-charge-caps-at-one-point-five-seconds",1000,(int)lroundf(G.pl.charge*1000.0f));
-    debug_invariant("wand-rain-gauge-before-first-mark",0,wand_rain_charge_tier(0.299f));
-    debug_invariant("wand-rain-gauge-first-mark",1,wand_rain_charge_tier(0.3f));
+    debug_invariant("wand-rain-gauge-before-first-mark",0,wand_rain_charge_tier(0.249f));
+    debug_invariant("wand-rain-gauge-first-mark",1,wand_rain_charge_tier(0.25f));
     debug_invariant("wand-rain-gauge-second-mark",2,wand_rain_charge_tier(0.5f));
-    debug_invariant("wand-rain-gauge-third-mark",3,wand_rain_charge_tier(0.7f));
+    debug_invariant("wand-rain-gauge-third-mark",3,wand_rain_charge_tier(0.75f));
     debug_invariant("wand-rain-gauge-full-mark",4,wand_rain_charge_tier(1.0f));
     G.light_mul=old_light; G.pl.relics[RELIC_LUMINANCE]=old_lum; G.meta.upg[3]=old_upg;
     printf("{\"schema\":1,\"kind\":\"fixture_end\",\"fixture\":\"modifiers\",\"status\":\"pass\"}\n");
@@ -3691,9 +3691,9 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==18) return "wand-rain-mid";
     if (DBG_CFG.showcase_checkpoint==19) return "wand-rain-end";
     if (DBG_CFG.showcase_checkpoint==20) return "wand-charge-base";
-    if (DBG_CFG.showcase_checkpoint==21) return "wand-charge-30";
+    if (DBG_CFG.showcase_checkpoint==21) return "wand-charge-25";
     if (DBG_CFG.showcase_checkpoint==22) return "wand-charge-50";
-    if (DBG_CFG.showcase_checkpoint==23) return "wand-charge-70";
+    if (DBG_CFG.showcase_checkpoint==23) return "wand-charge-75";
     if (DBG_CFG.showcase_checkpoint==24) return "wand-charge-full";
     return "pause";
 }
@@ -3946,7 +3946,7 @@ static void debug_showcase_tick(float dt){
         G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
     } else if (DBG_CFG.showcase_checkpoint>=20 && DBG_CFG.showcase_checkpoint<=24){
-        static const float charge_levels[5]={0.0f,0.3f,0.5f,0.7f,1.0f};
+        static const float charge_levels[5]={0.0f,0.25f,0.5f,0.75f,1.0f};
         attack_held=true;
         G.pl.charging=true;
         G.pl.charge=charge_levels[DBG_CFG.showcase_checkpoint-20];

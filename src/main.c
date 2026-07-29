@@ -533,9 +533,9 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"wand-rain-mid")) DBG_CFG.showcase_checkpoint=18;
             else if(!strcmp(checkpoint,"wand-rain-end")) DBG_CFG.showcase_checkpoint=19;
             else if(!strcmp(checkpoint,"wand-charge-base")) DBG_CFG.showcase_checkpoint=20;
-            else if(!strcmp(checkpoint,"wand-charge-30")) DBG_CFG.showcase_checkpoint=21;
+            else if(!strcmp(checkpoint,"wand-charge-25")) DBG_CFG.showcase_checkpoint=21;
             else if(!strcmp(checkpoint,"wand-charge-50")) DBG_CFG.showcase_checkpoint=22;
-            else if(!strcmp(checkpoint,"wand-charge-70")) DBG_CFG.showcase_checkpoint=23;
+            else if(!strcmp(checkpoint,"wand-charge-75")) DBG_CFG.showcase_checkpoint=23;
             else if(!strcmp(checkpoint,"wand-charge-full")) DBG_CFG.showcase_checkpoint=24;
             else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
             else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
