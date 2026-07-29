@@ -537,6 +537,10 @@ static void debug_parse(int argc, char** argv){
             else if(!strcmp(checkpoint,"wand-charge-50")) DBG_CFG.showcase_checkpoint=22;
             else if(!strcmp(checkpoint,"wand-charge-75")) DBG_CFG.showcase_checkpoint=23;
             else if(!strcmp(checkpoint,"wand-charge-full")) DBG_CFG.showcase_checkpoint=24;
+            else if(!strcmp(checkpoint,"cannon-frag-wall")) DBG_CFG.showcase_checkpoint=25;
+            else if(!strcmp(checkpoint,"cannon-rail-start")) DBG_CFG.showcase_checkpoint=26;
+            else if(!strcmp(checkpoint,"cannon-rail-mid")) DBG_CFG.showcase_checkpoint=27;
+            else if(!strcmp(checkpoint,"cannon-rail-end")) DBG_CFG.showcase_checkpoint=28;
             else if(!strcmp(checkpoint,"insert")) DBG_CFG.opening_checkpoint=1;
             else if(!strcmp(checkpoint,"seek")) DBG_CFG.opening_checkpoint=2;
             else if(!strcmp(checkpoint,"retry")) DBG_CFG.opening_checkpoint=3;

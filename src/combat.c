@@ -437,15 +437,36 @@ static void fire_weapon(float dt){
             if (p->attack_cd<=0){
                 p->attack_group++;
                 float mul = 1.0f+p->charge*2.0f;
-                bool rail = player_has_wrelic(WR_CANNON_RAIL) && p->charge>0.85f; // 완충 시 관통 레일
-                float bspeed = rail? wd->speed*1.9f : wd->speed;
-                float blife  = rail? 1.6f : 1.2f;
-                float brad   = rail? 3.5f : 4.0f+p->charge*4.0f;
-                int   bpc    = rail? 999 : 3;
+                bool rail = player_has_wrelic(WR_CANNON_RAIL) && p->charge+0.00001f>=1.0f;
+                float brad = 4.0f+p->charge*4.0f;
                 bool recoil = player_has_wrelic(WR_CANNON_RECOIL);
                 if (recoil){ mul*=1.5f; brad*=1.4f; }
-                Bullet* b=spawn_bullet(true,1,p->pos,v2scale(p->aim,bspeed),dmg*mul,blife,brad,bpc);
-                if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->delayed_fuse=player_has_wrelic(WR_CANNON_FUSE); }
+                if (rail){
+                    float max_len=v2len(V2(G.room.w*TILE,G.room.h*TILE));
+                    v2 end=p->pos;
+                    for (float distance=4.0f;distance<=max_len;distance+=4.0f){
+                        v2 next=v2add(p->pos,v2scale(p->aim,distance));
+                        if (next.x<0||next.y<0||next.x>=G.room.w*TILE||next.y>=G.room.h*TILE||
+                            tile_solid((int)(next.x/TILE),(int)(next.y/TILE))) break;
+                        end=next;
+                    }
+                    v2 beam=v2sub(end,p->pos);
+                    float beam_len=v2len(beam), half_width=brad*0.5f;
+                    Bullet* b=spawn_bullet(true,14,p->pos,beam,dmg*mul,0.12f,half_width,999);
+                    if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->attack_group=p->attack_group; }
+                    for (int i=0;i<MAX_ENTITIES;i++){
+                        Entity* e=&G.ents[i];
+                        if (!e->active||e->type==E_ECHO_GHOST) continue;
+                        v2 offset=v2sub(e->pos,p->pos);
+                        float forward=offset.x*p->aim.x+offset.y*p->aim.y;
+                        float side=fabsf(offset.x*p->aim.y-offset.y*p->aim.x);
+                        if (forward>=-e->radius&&forward<=beam_len+e->radius&&side<=half_width+e->radius)
+                            enemy_damage(e,dmg*mul,p->pos,burn,slow,crit,true,p->attack_group);
+                    }
+                } else {
+                    Bullet* b=spawn_bullet(true,1,p->pos,v2scale(p->aim,wd->speed),dmg*mul,1.2f,brad,3);
+                    if (b){ b->burn=burn; b->slow=slow; b->crit=crit; b->delayed_fuse=player_has_wrelic(WR_CANNON_FUSE); }
+                }
                 if (recoil) p->vel=v2add(p->vel,v2scale(p->aim,-130.0f));
                 p->attack_cd = wd->cooldown*cd_mul*kinship_cd_mul;
                 G.shake=fmaxf(G.shake,1.0f+p->charge*2.0f);
@@ -1267,7 +1288,7 @@ static void update_boss(Entity* e,float dt){
 }
 
 // 플레이어 탄이 소멸할 때의 무기 유물 효과 (파편 분열 / 충격 폭발)
-static void bullet_death_fx(Bullet* b){
+static void bullet_death_fx(Bullet* b,bool wall_hit,v2 reflected){
     if (!b->from_player) return;
     if (b->kind==1 && b->fuse_armed){
         float explosion_radius=44.0f*(player_has_wrelic(WR_CANNON_RECOIL)?1.4f:1.0f);
@@ -1281,8 +1302,12 @@ static void bullet_death_fx(Bullet* b){
         G.shake=fmaxf(G.shake,3.5f);
     }
     if (b->kind==1 && player_has_wrelic(WR_CANNON_FRAG)){ // 포탄 → 6갈래 파편
-        for (int k=0;k<6;k++){ float a=k*1.0472f+rng_f(&crng);
-            Bullet* frag=spawn_bullet(true,0,b->pos,V2(cosf(a)*210.0f,sinf(a)*210.0f),b->dmg*0.5f,0.5f,3.0f,0);
+        bool amplified=player_has_wrelic(WR_CANNON_RECOIL);
+        float base=wall_hit?atan2f(reflected.y,reflected.x):rng_f(&crng)*6.2832f;
+        for (int k=0;k<6;k++){
+            float a=wall_hit?base+(k-2.5f)*0.22f:base+k*1.0472f;
+            Bullet* frag=spawn_bullet(true,0,b->pos,V2(cosf(a)*210.0f,sinf(a)*210.0f),
+                b->dmg*0.5f*(amplified?1.2f:1.0f),0.5f,3.0f*(amplified?1.2f:1.0f),0);
             if (frag) frag->attack_group=b->attack_group;
         }
         burst(b->pos,10,COL(0x7CFCE4),130,0.4f,2.2f,true);
@@ -1311,9 +1336,9 @@ static void update_bullets(float dt){
             if (b->kind==3){ begin_glaive_return(b,p); b->life=3.0f; }
             else if (b->kind==12){ trigger_lance_pin(b); b->active=false; continue; }
             else if (arm_delayed_fuse(b)) continue;
-            else { bullet_death_fx(b); b->active=false; continue; }
+            else { bullet_death_fx(b,false,V2(0,0)); b->active=false; continue; }
         }
-        if (b->kind==12||b->kind==13) continue;
+        if (b->kind==12||b->kind==13||b->kind==14) continue;
         if (b->kind==11){
             b->trail_t-=dt;
             if (b->trail_t<=0){
@@ -1384,7 +1409,14 @@ static void update_bullets(float dt){
             }
             if (arm_delayed_fuse(b)) continue;
             burst(b->pos,4,b->from_player?COL(0x7CFCE4):COL(0xFF3D7F),60,0.25f,1.5f,true);
-            bullet_death_fx(b); b->active=false; continue;
+            v2 reflected=b->vel;
+            bool solid_x=tile_solid((int)((previous_pos.x+b->vel.x*dt)/TILE),(int)(previous_pos.y/TILE));
+            bool solid_y=tile_solid((int)(previous_pos.x/TILE),(int)((previous_pos.y+b->vel.y*dt)/TILE));
+            if (solid_x) reflected.x=-reflected.x;
+            if (solid_y) reflected.y=-reflected.y;
+            if (!solid_x&&!solid_y) reflected=v2scale(reflected,-1.0f);
+            b->pos=previous_pos;
+            bullet_death_fx(b,true,v2norm(reflected)); b->active=false; continue;
         }
         if (b->pos.x<0||b->pos.y<0||b->pos.x>G.room.w*TILE||b->pos.y>G.room.h*TILE){
             if (b->kind==3){
@@ -1393,7 +1425,11 @@ static void update_bullets(float dt){
                 continue;
             }
             if (arm_delayed_fuse(b)) continue;
-            bullet_death_fx(b); b->active=false; continue;
+            v2 reflected=b->vel;
+            if (b->pos.x<0||b->pos.x>G.room.w*TILE) reflected.x=-reflected.x;
+            if (b->pos.y<0||b->pos.y>G.room.h*TILE) reflected.y=-reflected.y;
+            b->pos=previous_pos;
+            bullet_death_fx(b,true,v2norm(reflected)); b->active=false; continue;
         }
         if (b->kind==3 && b->from_player && player_has_wrelic(WR_GLAIVE_TRAIL)){
             b->trail_t-=dt;
@@ -1454,10 +1490,10 @@ static void update_bullets(float dt){
                         }
                     }
                     b->last_hit=j; b->rehit_t=0.5f;
-                    if (lance_stops){ bullet_death_fx(b); b->active=false; break; }
+                    if (lance_stops){ bullet_death_fx(b,false,V2(0,0)); b->active=false; break; }
                     if (arm_delayed_fuse(b)) break;
                     if (b->pierce>0){ b->pierce--; }
-                    else { bullet_death_fx(b); b->active=false; }
+                    else { bullet_death_fx(b,false,V2(0,0)); b->active=false; }
                     break;
                 }
             }

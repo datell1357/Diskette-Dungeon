@@ -436,6 +436,13 @@ void draw_play(void){
             draw_ring(b->pos.x,b->pos.y,radius*0.7f,COL(0x9FFFF0),(1.0f-prog)*0.45f);
             continue;
         }
+        if (b->kind==14){
+            v2 end=v2add(b->pos,b->vel);
+            float fade=clampf(b->life/0.12f,0,1);
+            draw_line(b->pos.x,b->pos.y,end.x,end.y,b->radius*2.0f,COL(0x3FE0C5),0.38f*fade);
+            draw_line(b->pos.x,b->pos.y,end.x,end.y,fmaxf(1.0f,b->radius*0.7f),COL(0xE8FFF9),0.95f*fade);
+            continue;
+        }
         col3 c = b->from_player? COL(0x7CFCE4):COL(0xFF3D7F);
         if (b->kind==6) c=COL(0xFF7A3D);
         if (b->kind==3){
@@ -531,7 +538,7 @@ void draw_play(void){
             draw_light_blob(b->pos.x,b->pos.y,b->radius*1.8f,(col3){1.5f,0.28f,0.06f},0.12f*fade);
             continue;
         }
-        if (b->kind==13) continue;
+        if (b->kind==13||b->kind==14) continue;
         col3 c=b->from_player?COL(0x3FE0C5):COL(0xFF3D7F);
         draw_light_blob(b->pos.x,b->pos.y,b->radius*5.0f,c,0.5f);
     }
@@ -576,7 +583,7 @@ void draw_play(void){
     for (int i=0;i<MAX_BULLETS;i++){
         Bullet* b=&G.bullets[i];
         if (!b->active) continue;
-        if (b->kind==11||b->kind==13) continue;
+        if (b->kind==11||b->kind==13||b->kind==14) continue;
         col3 c=b->from_player?COL(0x7CFCE4):COL(0xFF3D7F);
         draw_glow_blob(b->pos.x,b->pos.y,b->radius*3.0f,c,0.55f);
     }
@@ -2854,6 +2861,54 @@ static void debug_fixture_modifiers(void){
     update_bullets(0.4f);
     debug_invariant("cannon-fuse-detonates",1,!fuse->active&&G.ents[0].hp<20.0f?1:0);
     memset(G.bullets,0,sizeof G.bullets);
+    uint8_t saved_cannon_origin=G.room.tiles[5][5], saved_cannon_wall=G.room.tiles[5][6];
+    G.room.tiles[5][5]=T_FLOOR; G.room.tiles[5][6]=T_WALL;
+    G.pl.wrelics[0]=WR_CANNON_FRAG; G.pl.wrelics[1]=-1;
+    spawn_bullet(true,1,V2(5*TILE+8,5*TILE+8),V2(200,0),10.0f,1.0f,4.0f,0);
+    update_bullets(0.06f);
+    int reflected_fragments=0, reflected_away=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==0){
+        reflected_fragments++;
+        if (G.bullets[i].vel.x<0) reflected_away++;
+    }
+    debug_invariant("cannon-frag-wall-count",6,reflected_fragments);
+    debug_invariant("cannon-frag-all-reflect-away-from-wall",6,reflected_away);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.wrelics[1]=WR_CANNON_RECOIL;
+    spawn_bullet(true,1,V2(5*TILE+8,5*TILE+8),V2(200,0),10.0f,1.0f,4.0f,0);
+    update_bullets(0.06f);
+    int amplified_fragments=0;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==0){
+        amplified_fragments++;
+        debug_invariant("cannon-recoil-frag-damage-plus-20",6000,(int)lroundf(G.bullets[i].dmg*1000.0f));
+        debug_invariant("cannon-recoil-frag-size-plus-20",3600,(int)lroundf(G.bullets[i].radius*1000.0f));
+    }
+    debug_invariant("cannon-recoil-frag-count",6,amplified_fragments);
+    G.room.tiles[5][5]=T_FLOOR; G.room.tiles[5][6]=T_FLOOR;
+    memset(G.bullets,0,sizeof G.bullets); memset(G.ents,0,sizeof G.ents);
+    G.pl.weapon.type=WPN_CANNON; G.pl.pos=V2(5*TILE+8,5*TILE+8); G.pl.aim=V2(1,0); G.pl.attack_cd=0;
+    G.pl.wrelics[0]=WR_CANNON_RAIL; G.pl.wrelics[1]=-1;
+    G.pl.charge=0.99f; G.pl.charging=true; attack_held=false;
+    fire_weapon(0);
+    int near_full_shells=0; Bullet* near_full_shell=NULL;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active&&G.bullets[i].kind==1){ near_full_shells++; near_full_shell=&G.bullets[i]; }
+    debug_invariant("cannon-rail-requires-full-charge",1,near_full_shells);
+    debug_invariant("cannon-near-full-keeps-shell-size",7960,near_full_shell?(int)lroundf(near_full_shell->radius*1000.0f):0);
+    memset(G.bullets,0,sizeof G.bullets);
+    G.pl.attack_cd=0; G.pl.charge=1.0f; G.pl.charging=true;
+    G.ents[0]=(Entity){true,E_BAT,v2add(G.pl.pos,V2(24,0)),V2(0,0),100.0f,100.0f,7.0f};
+    fire_weapon(0);
+    int rail_beams=0, rail_shells=0; Bullet* rail_beam=NULL;
+    for (int i=0;i<MAX_BULLETS;i++) if (G.bullets[i].active){
+        if (G.bullets[i].kind==14){ rail_beams++; rail_beam=&G.bullets[i]; }
+        if (G.bullets[i].kind==1) rail_shells++;
+    }
+    debug_invariant("cannon-rail-spawns-laser",1,rail_beams);
+    debug_invariant("cannon-rail-replaces-shell",0,rail_shells);
+    debug_invariant("cannon-rail-half-full-shell-radius",4000,rail_beam?(int)lroundf(rail_beam->radius*1000.0f):0);
+    debug_invariant("cannon-rail-hits-immediately",1,G.ents[0].hp<100.0f?1:0);
+    G.room.tiles[5][5]=saved_cannon_origin; G.room.tiles[5][6]=saved_cannon_wall;
+    memset(G.bullets,0,sizeof G.bullets);
     G.pl.weapon.type=WPN_SPRAY; G.pl.aim=V2(1,0); G.pl.attack_cd=0; attack_held=true;
     G.pl.wrelics[0]=WR_SPRAY_PIERCE; G.pl.wrelics[1]=-1;
     fire_weapon(0);
@@ -3695,6 +3750,10 @@ static const char* debug_showcase_checkpoint_name(void){
     if (DBG_CFG.showcase_checkpoint==22) return "wand-charge-50";
     if (DBG_CFG.showcase_checkpoint==23) return "wand-charge-75";
     if (DBG_CFG.showcase_checkpoint==24) return "wand-charge-full";
+    if (DBG_CFG.showcase_checkpoint==25) return "cannon-frag-wall";
+    if (DBG_CFG.showcase_checkpoint==26) return "cannon-rail-start";
+    if (DBG_CFG.showcase_checkpoint==27) return "cannon-rail-mid";
+    if (DBG_CFG.showcase_checkpoint==28) return "cannon-rail-end";
     return "pause";
 }
 static void debug_showcase_record_transition(const char* owner,int before){
@@ -3706,7 +3765,7 @@ static int debug_showcase_expected_state(void){
     if (DBG_CFG.showcase_checkpoint==9) return ST_FLASHBACK;
     if (DBG_CFG.showcase_checkpoint==2 || DBG_CFG.showcase_checkpoint==4 || DBG_CFG.showcase_checkpoint==5 ||
         DBG_CFG.showcase_checkpoint==7 || DBG_CFG.showcase_checkpoint==8 ||
-        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=24)) return ST_PLAY;
+        (DBG_CFG.showcase_checkpoint>=11 && DBG_CFG.showcase_checkpoint<=28)) return ST_PLAY;
     if (DBG_CFG.showcase_checkpoint==6 || DBG_CFG.showcase_checkpoint==10) return ST_RELIC_SWAP;
     return ST_PAUSE;
 }
@@ -3885,6 +3944,20 @@ static void debug_prepare_ui_showcase(void){
         G.pl.wrelics[0]=WR_WAND_DELAY;
         G.pl.wrelics[1]=-1;
         G.room.cleared=true;
+    } else if (DBG_CFG.showcase_checkpoint>=25 && DBG_CFG.showcase_checkpoint<=28) {
+        room_generate(0,1,PROMISE_NONE,DIR_L);
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.ents,0,sizeof G.ents);
+        memset(G.pickups,0,sizeof G.pickups);
+        G.pl.pos=V2(G.room.w*TILE*0.36f,G.room.h*TILE*0.55f);
+        G.pl.weapon.type=WPN_CANNON;
+        G.pl.aim=V2(1,0);
+        G.room.cleared=true;
+        for (int i=0;i<2;i++){
+            spawn_enemy(E_SLIME,v2add(G.pl.pos,V2(68.0f+(float)i*56.0f,0)));
+            G.ents[i].hp=G.ents[i].maxhp=1000.0f;
+            G.ents[i].spawn_t=0;
+        }
     } else {
         debug_invariant("showcase-weapon-branch",1,debug_showcase_prepare_weapon_branch()?1:0);
         debug_invariant("showcase-door-count",2,G.room.door_count);
@@ -3950,6 +4023,40 @@ static void debug_showcase_tick(float dt){
         attack_held=true;
         G.pl.charging=true;
         G.pl.charge=charge_levels[DBG_CFG.showcase_checkpoint-20];
+        G.pl.vel=V2(0,0);
+        G.pl.iframes=60.0f;
+    } else if (DBG_CFG.showcase_checkpoint>=25 && DBG_CFG.showcase_checkpoint<=28){
+        memset(G.bullets,0,sizeof G.bullets);
+        memset(G.parts,0,sizeof G.parts);
+        memset(G.floaters,0,sizeof G.floaters);
+        memset(G.enemy_feedback,0,sizeof G.enemy_feedback);
+        for (int i=0;i<2;i++){
+            G.ents[i].active=true;
+            G.ents[i].pos=v2add(G.pl.pos,V2(68.0f+(float)i*56.0f,0));
+            G.ents[i].hp=G.ents[i].maxhp=1000.0f;
+            G.ents[i].vel=V2(0,0);
+            G.ents[i].spawn_t=0;
+        }
+        int py=(int)(G.pl.pos.y/TILE), px=(int)(G.pl.pos.x/TILE);
+        for (int x=px;x<G.room.w-1;x++) G.room.tiles[py][x]=T_FLOOR;
+        G.pl.attack_cd=0;
+        G.pl.charge=1.0f;
+        G.pl.charging=true;
+        G.pl.impact_group=0;
+        attack_held=false;
+        if (DBG_CFG.showcase_checkpoint==25){
+            G.pl.wrelics[0]=WR_CANNON_FRAG;
+            G.pl.wrelics[1]=WR_CANNON_RECOIL;
+            G.room.tiles[py][px+3]=T_WALL;
+            fire_weapon(0);
+            for (int step=0;step<38;step++) update_bullets(1.0f/120.0f);
+        } else {
+            G.pl.wrelics[0]=WR_CANNON_RAIL;
+            G.pl.wrelics[1]=-1;
+            fire_weapon(0);
+            static const int steps[3]={0,6,13};
+            for (int step=0;step<steps[DBG_CFG.showcase_checkpoint-26];step++) update_bullets(1.0f/120.0f);
+        }
         G.pl.vel=V2(0,0);
         G.pl.iframes=60.0f;
     }
