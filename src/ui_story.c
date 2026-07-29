@@ -1332,8 +1332,8 @@ static void draw_title(void){
     float y=120;
     const char* items[7];
     items[0]="모험 시작";
-    items[1]="무기 변경"; items[2]="캐릭터 강화"; items[3]="설정";
-    items[4]="도감"; items[5]="훈련장"; items[6]="종료";
+    items[1]="무기 변경"; items[2]="캐릭터 강화"; items[3]="훈련장";
+    items[4]="설정"; items[5]="도감"; items[6]="종료";
     for (int i=0;i<7;i++){
         bool sel = G.menu_sel==i;
         col3 c = sel?COL(0xFFFFFF):COL(0x8878A8);
@@ -4333,14 +4333,14 @@ static void title_activate(void){
         break;
     case 1: G.state=ST_WEAPON_SELECT; G.state_t=0; sfx_play(SFX_UI); break;
     case 2: G.state=ST_UPGRADE; G.upg_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
-    case 3: G.options_return_state=ST_TITLE; G.state=ST_OPTIONS; G.menu_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
-    case 4: G.state=ST_CODEX; G.codex_section=0; G.codex_page=0; G.codex_detail=0; G.codex_focus=0; sfx_play(SFX_UI); break;
-    case 5:
+    case 3:
         start_training();
         G.state=ST_TRAINING; G.state_t=0;
         G.fade=1; G.fade_dir=-1;
         sfx_play(SFX_UI);
         break;
+    case 4: G.options_return_state=ST_TITLE; G.state=ST_OPTIONS; G.menu_sel=0; G.state_t=0; sfx_play(SFX_UI); break;
+    case 5: G.state=ST_CODEX; G.codex_section=0; G.codex_page=0; G.codex_detail=0; G.codex_focus=0; sfx_play(SFX_UI); break;
     case 6: meta_save(); sapp_request_quit(); break;
     }
 }
