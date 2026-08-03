@@ -139,7 +139,7 @@ typedef struct {
     float attack_cd, charge;   // charge: 캐논
     uint32_t attack_group, impact_group;
     bool charging;
-    float dash_t, dash_cd, iframes;
+    float dash_t, dash_cd, dash_cd_max, iframes;
     v2 dash_dir;
     bool relics[RELIC_COUNT];
     int wrelics[2];            // 보유한 무기 유물 (빈 슬롯 = -1), 최대 2개

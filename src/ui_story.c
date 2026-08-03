@@ -917,6 +917,27 @@ static void draw_shield_heart(float x,float capacity,float amount){
     #undef SHIELD_HALF
     #undef SHIELD_HEART
 }
+static float player_dash_ready_fraction(void){
+    if (G.pl.dash_cd<=0.0f || G.pl.dash_cd_max<=0.0f) return 1.0f;
+    return clampf(1.0f-G.pl.dash_cd/G.pl.dash_cd_max,0.0f,1.0f);
+}
+static void draw_dash_gauge(float x,float y){
+    float ready=player_dash_ready_fraction();
+    bool available=G.pl.dash_cd<=0.0f;
+    float alpha=available?0.9f+0.1f*sinf(G.time*4.0f):0.9f;
+    float bx=x+34.0f, by=y+1.0f, bw=48.0f, bh=6.0f;
+    col3 fill=available?COL(0x3FE0C5):COL(0x247C78);
+    char seconds[8];
+
+    draw_text("SHIFT",x,y-2.0f,0.48f,available?COL(0x9FFFF0):COL(0x8878A8),alpha);
+    draw_quad(bx-1.0f,by-1.0f,bw+2.0f,bh+2.0f,COL(0x0B0710),0.85f);
+    draw_quad(bx,by,bw,bh,COL(0x203040),0.7f);
+    draw_quad(bx,by,bw*ready,bh,fill,alpha);
+    if (!available && G.pl.dash_cd<1.0f){
+        snprintf(seconds,sizeof(seconds),"%.1f",ceilf(G.pl.dash_cd*10.0f)/10.0f);
+        draw_text(seconds,bx+bw+4.0f,y-2.0f,0.48f,COL(0xC8C0E0),0.9f);
+    }
+}
 static void draw_training_hud(void){
     static const float station_x[WPN_COUNT]={40,120,200,280,360,440};
     static const float module_dx[4]={-20,20,-20,20};
@@ -926,6 +947,7 @@ static void draw_training_hud(void){
     draw_quad(0,0,VIRT_W,28,COL(0x0B0710),0.78f);
     draw_text("훈련장",8,7,0.82f,COL(0x9FFFF0),1);
     draw_text_center("E : 장착 · Tab : 가방 · Esc : 나가기",VIRT_W*0.5f,8,0.54f,COL(0xC8C0E0),0.95f);
+    draw_dash_gauge(8,37);
     Pickup* nearby=NULL;
     float best=28.0f;
     for (int i=0;i<MAX_PICKUPS;i++){
@@ -1061,6 +1083,7 @@ void hud_draw(void){
     draw_text(buf,28,38,0.7f,COL(0xC8C0E0),0.9f);
     snprintf(buf,sizeof(buf),"빛 %.0f",player_light_radius());
     draw_text(buf,8,56,0.65f,COL(0x9FFFF0),0.9f);
+    draw_dash_gauge(8,72);
     // 진행/바이트/조각
     snprintf(buf,sizeof(buf),"%s  %d/9",biome_names[G.room.biome],G.room.idx+1);
     draw_text(buf,VIRT_W-text_width(buf,0.75f)-10,10,0.75f,COL(0x9FFFF0),0.9f);
@@ -2699,6 +2722,12 @@ static void debug_fixture_modifiers(void){
     for (int i=1;i<WPN_COUNT;i++) weapon_total+=weapon_unlock_cost(i);
     debug_invariant("permanent-upgrade-cost-total",4100,permanent_total);
     debug_invariant("weapon-unlock-cost-total",1160,weapon_total);
+    G.pl.dash_cd=2.0f; G.pl.dash_cd_max=2.0f;
+    debug_invariant("dash-gauge-start-empty",0,(int)lroundf(player_dash_ready_fraction()*1000.0f));
+    G.pl.dash_cd=1.0f;
+    debug_invariant("dash-gauge-half-ready",500,(int)lroundf(player_dash_ready_fraction()*1000.0f));
+    G.pl.dash_cd=0.0f;
+    debug_invariant("dash-gauge-ready-full",1000,(int)lroundf(player_dash_ready_fraction()*1000.0f));
     G.light_mul=1.0f;
     G.pl.relics[RELIC_LUMINANCE]=false;
     G.meta.upg[3]=0;
@@ -5269,6 +5298,7 @@ void game_event(const sapp_event* e){
                 p->dash_t=0.16f;
                 p->dash_cd=(2.0f - (p->relics[RELIC_DEFRAG]?(1.0f-capacity_frac())*0.5f:0))
                             *(1.0f - G.meta.upg[4]*0.06f);
+                p->dash_cd_max=p->dash_cd;
                 p->iframes=fmaxf(p->iframes,0.22f);
                 sfx_play(SFX_DASH);
                 burst(p->pos,6,COL(0x3FE0C5),80,0.3f,2,true);
