@@ -929,7 +929,7 @@ static void draw_dash_gauge(float x,float y){
     col3 fill=available?COL(0x3FE0C5):COL(0x247C78);
     char seconds[8];
 
-    draw_text("SHIFT",x,y-2.0f,0.48f,available?COL(0x9FFFF0):COL(0x8878A8),alpha);
+    draw_text("DASH",x,y-2.0f,0.48f,available?COL(0x9FFFF0):COL(0x8878A8),alpha);
     draw_quad(bx-1.0f,by-1.0f,bw+2.0f,bh+2.0f,COL(0x0B0710),0.85f);
     draw_quad(bx,by,bw,bh,COL(0x203040),0.7f);
     draw_quad(bx,by,bw*ready,bh,fill,alpha);
